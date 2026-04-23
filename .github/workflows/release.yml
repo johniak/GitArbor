@@ -81,6 +81,8 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Sanitize asset filenames
+        run: find dist -type f -name '* *' -print0 | while IFS= read -r -d '' f; do mv "$f" "${f// /-}"; done
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
