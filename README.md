@@ -25,7 +25,9 @@ A modern graphical Git client for Linux, macOS, and Windows.
 - **Stash**: create, apply, and drop — with a dedicated dialog
 - **Create branch** from any commit, with live slug preview
 - **Multi-repo switching** through the native system menu
-- **Cross-platform installers**: `.deb`, `.rpm`, Windows `.exe`, macOS `.zip`
+- **Cross-platform installers**: `.deb`, `.rpm`, Windows `.exe` _(not tested)_, macOS `.zip`
+
+See [FEATURES.md](./FEATURES.md) for the full feature matrix and roadmap.
 
 ## Screenshots
 
@@ -37,7 +39,7 @@ Pre-built installers will be attached to each
 [GitHub Release](https://github.com/johniak/gitarbor/releases):
 
 - **Linux**: `.deb` or `.rpm`
-- **Windows**: Squirrel `.exe` installer
+- **Windows**: Squirrel `.exe` installer — _builds in CI but is not actively tested yet_
 - **macOS**: `.zip` — unpack and move `GitArbor.app` to `/Applications`
 
 ## Development Setup
