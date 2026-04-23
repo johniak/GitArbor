@@ -5,14 +5,21 @@ import {
   type Page,
 } from '@playwright/test';
 import { findLatestBuild, parseElectronApp } from 'electron-playwright-helpers';
+import path from 'node:path';
 import { createTestRepo, type TestRepo } from './test-repo';
 
 type ElectronFixtures = {
   electronApp: ElectronApplication;
   window: Page;
+  testRepoPath: string;
+  e2eSavePath: string;
 };
 
 let testRepo: TestRepo | null = null;
+
+function computeSavePath(repoPath: string): string {
+  return path.join(repoPath, '..', 'e2e-save-output');
+}
 
 export const test = base.extend<ElectronFixtures>({
   // eslint-disable-next-line no-empty-pattern
@@ -30,6 +37,7 @@ export const test = base.extend<ElectronFixtures>({
         ...process.env,
         NODE_ENV: 'test',
         REPO_PATH: testRepo.repoPath,
+        E2E_SAVE_PATH: computeSavePath(testRepo.repoPath),
       },
     });
     await use(app);
@@ -45,6 +53,18 @@ export const test = base.extend<ElectronFixtures>({
     await window.setViewportSize({ width: 800, height: 600 });
     await window.waitForLoadState('domcontentloaded');
     await use(window);
+  },
+
+  testRepoPath: async ({ electronApp }, use) => {
+    void electronApp; // dependency — ensures testRepo is initialised
+    if (!testRepo) throw new Error('testRepo not initialised');
+    await use(testRepo.repoPath);
+  },
+
+  e2eSavePath: async ({ electronApp }, use) => {
+    void electronApp; // dependency — ensures testRepo is initialised
+    if (!testRepo) throw new Error('testRepo not initialised');
+    await use(computeSavePath(testRepo.repoPath));
   },
 });
 

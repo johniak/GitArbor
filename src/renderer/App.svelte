@@ -16,6 +16,12 @@
     type TagAction,
   } from './components/AddTagDialog.svelte';
   import PushDialog, { type PushAction } from './components/PushDialog.svelte';
+  import ResetCommitDialog, {
+    type ResetMode,
+  } from './components/ResetCommitDialog.svelte';
+  import RevertCommitDialog from './components/RevertCommitDialog.svelte';
+  import CherryPickDialog from './components/CherryPickDialog.svelte';
+  import PushRevisionDialog from './components/PushRevisionDialog.svelte';
   import { mockSidebar, mockCommits, mockFiles, mockDiff } from './mock-data';
   import type {
     ChangedFile,
@@ -90,8 +96,28 @@
   let scrollToIndex = $state<number | null>(null);
 
   let showStashDialog = $state(false);
-  let showCreateBranchDialog = $state(false);
+  let branchDialog = $state<{ startPoint?: string } | null>(null);
   let showPushDialog = $state(false);
+  let resetDialog = $state<{
+    hash: string;
+    shortHash: string;
+    subject: string;
+    branch: string;
+  } | null>(null);
+  let revertDialog = $state<{
+    hash: string;
+    shortHash: string;
+    subject: string;
+  } | null>(null);
+  let cherryPickDialog = $state<{
+    hash: string;
+    shortHash: string;
+    subject: string;
+  } | null>(null);
+  let pushRevisionDialog = $state<{
+    hash: string;
+    shortHash: string;
+  } | null>(null);
   let contextMenu = $state<{
     hash: string;
     subject: string;
@@ -328,7 +354,7 @@
       return;
     }
     if (action === 'branch') {
-      showCreateBranchDialog = true;
+      branchDialog = {};
       return;
     }
 
@@ -587,7 +613,7 @@
     startPoint: string | undefined,
     checkout: boolean,
   ) {
-    showCreateBranchDialog = false;
+    branchDialog = null;
     try {
       await withProgress('Creating branch...', async () => {
         await window.electronAPI.git.createBranch(name, startPoint);
@@ -926,6 +952,118 @@
       console.error('Checkout failed:', e);
     }
   }
+
+  async function handleResetToCommit(hash: string, mode: ResetMode) {
+    resetDialog = null;
+    errorDialog = null;
+    try {
+      await withProgress(`Resetting to ${hash.slice(0, 7)}...`, () =>
+        window.electronAPI.git.resetToCommit(hash, mode),
+      );
+      await loadAllData();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      showError('Reset Failed', 'Could not reset to this commit.', msg);
+    }
+  }
+
+  async function handleRevertCommit(hash: string) {
+    revertDialog = null;
+    errorDialog = null;
+    const result = await withProgress(`Reverting ${hash.slice(0, 7)}...`, () =>
+      window.electronAPI.git.revertCommit(hash),
+    );
+    if (result?.error) {
+      showError('Revert Failed', 'Could not revert commit.', result.error);
+    } else if (result?.conflicts?.length > 0) {
+      showError(
+        'Revert Conflicts',
+        'Revert produced conflicts. Resolve manually.',
+        result.conflicts.join('\n'),
+      );
+    }
+    await loadAllData();
+  }
+
+  async function handleCherryPick(hash: string) {
+    cherryPickDialog = null;
+    errorDialog = null;
+    const result = await withProgress(
+      `Cherry-picking ${hash.slice(0, 7)}...`,
+      () => window.electronAPI.git.cherryPick(hash),
+    );
+    if (result?.error) {
+      showError(
+        'Cherry-pick Failed',
+        'Could not cherry-pick commit.',
+        result.error,
+      );
+    } else if (result?.conflicts?.length > 0) {
+      showError(
+        'Cherry-pick Conflicts',
+        'Cherry-pick produced conflicts. Resolve manually.',
+        result.conflicts.join('\n'),
+      );
+    }
+    await loadAllData();
+  }
+
+  async function handleArchiveCommit(hash: string, shortHash: string) {
+    try {
+      await withProgress('Creating archive...', () =>
+        window.electronAPI.git.archiveCommit(hash, `${shortHash}.zip`),
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      showError('Archive Failed', 'Could not create archive.', msg);
+    }
+  }
+
+  async function handleCreatePatchFromCommit(hash: string, shortHash: string) {
+    try {
+      await withProgress('Creating patch...', () =>
+        window.electronAPI.git.createPatchFromCommit(
+          hash,
+          `${shortHash}.patch`,
+        ),
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      showError('Create Patch Failed', 'Could not create patch.', msg);
+    }
+  }
+
+  async function handlePushRevision(
+    hash: string,
+    opts: { remote: string; branch: string; force: boolean },
+  ) {
+    pushRevisionDialog = null;
+    errorDialog = null;
+    try {
+      await withProgress(
+        `Pushing ${hash.slice(0, 7)} to ${opts.remote}/${opts.branch}...`,
+        () =>
+          window.electronAPI.git.pushRevision(
+            opts.remote,
+            hash,
+            opts.branch,
+            opts.force,
+          ),
+      );
+      await loadAllData();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      showError('Push Revision Failed', 'Could not push revision.', msg);
+    }
+  }
+
+  async function handleCopyShaToClipboard(hash: string) {
+    try {
+      await navigator.clipboard.writeText(hash);
+    } catch (e) {
+      console.error('Clipboard copy failed:', e);
+    }
+  }
 </script>
 
 <div class="app-shell">
@@ -950,7 +1088,7 @@
         onApplyStash={handleApplyStashRequest}
         onMergeBranch={handleMergeBranch}
         onRebaseBranch={handleRebaseBranch}
-        onNewBranch={() => (showCreateBranchDialog = true)}
+        onNewBranch={() => (branchDialog = {})}
         onScrollToBranch={handleScrollToBranch}
       />
     </div>
@@ -1072,11 +1210,12 @@
   </div>
 </div>
 
-{#if showCreateBranchDialog}
+{#if branchDialog}
   <CreateBranchDialog
     currentBranch={sidebarData.branches.find((b) => b.current)?.name ?? 'main'}
+    initialStartPoint={branchDialog.startPoint}
     onConfirm={handleCreateBranch}
-    onCancel={() => (showCreateBranchDialog = false)}
+    onCancel={() => (branchDialog = null)}
   />
 {/if}
 
@@ -1090,20 +1229,100 @@
 {/if}
 
 {#if contextMenu}
+  {@const menu = contextMenu}
+  {@const currentBr = sidebarData.branches.find((b) => b.current)}
+  {@const branchName = currentBr?.name ?? null}
+  {@const isHead = currentBr ? menu.hash.startsWith(currentBr.commit) : false}
+  {@const hasRemotes = sidebarData.remotes.length > 0}
+  {@const shortHash = menu.hash.slice(0, 7)}
+  {@const resetLabel = branchName
+    ? `Reset ${branchName} to this commit…`
+    : 'Reset to this commit…'}
   <ContextMenu
-    x={contextMenu.x}
-    y={contextMenu.y}
+    x={menu.x}
+    y={menu.y}
     items={[
       {
-        label: 'Add Tag…',
+        label: 'Checkout',
+        disabled: isHead,
+        onSelect: () => handleCheckoutCommit(menu.hash),
+      },
+      {
+        label: 'Push revision…',
+        disabled: !hasRemotes,
         onSelect: () => {
-          if (!contextMenu) return;
+          pushRevisionDialog = { hash: menu.hash, shortHash };
+        },
+      },
+      {
+        label: 'Merge…',
+        disabled: isHead,
+        onSelect: () => handleMergeBranch(menu.hash),
+      },
+      { label: 'Rebase…', onSelect: () => handleRebaseBranch(menu.hash) },
+      { separator: true },
+      {
+        label: 'Tag…',
+        onSelect: () => {
           tagDialog = {
             mode: 'add',
-            hash: contextMenu.hash,
-            subject: contextMenu.subject,
+            hash: menu.hash,
+            subject: menu.subject,
           };
         },
+      },
+      {
+        label: 'Branch…',
+        onSelect: () => {
+          branchDialog = { startPoint: menu.hash };
+        },
+      },
+      { separator: true },
+      {
+        label: resetLabel,
+        disabled: !branchName,
+        onSelect: () => {
+          resetDialog = {
+            hash: menu.hash,
+            shortHash,
+            subject: menu.subject,
+            branch: branchName ?? '',
+          };
+        },
+      },
+      {
+        label: 'Reverse commit…',
+        onSelect: () => {
+          revertDialog = {
+            hash: menu.hash,
+            shortHash,
+            subject: menu.subject,
+          };
+        },
+      },
+      {
+        label: 'Create Patch…',
+        onSelect: () => handleCreatePatchFromCommit(menu.hash, shortHash),
+      },
+      {
+        label: 'Cherry Pick',
+        disabled: isHead,
+        onSelect: () => {
+          cherryPickDialog = {
+            hash: menu.hash,
+            shortHash,
+            subject: menu.subject,
+          };
+        },
+      },
+      {
+        label: 'Archive…',
+        onSelect: () => handleArchiveCommit(menu.hash, shortHash),
+      },
+      { separator: true },
+      {
+        label: 'Copy SHA-1 to Clipboard',
+        onSelect: () => handleCopyShaToClipboard(menu.hash),
       },
     ]}
     onClose={() => (contextMenu = null)}
@@ -1119,6 +1338,50 @@
     remotes={sidebarData.remotes}
     onConfirm={handleTagAction}
     onCancel={() => (tagDialog = null)}
+  />
+{/if}
+
+{#if resetDialog}
+  <ResetCommitDialog
+    branch={resetDialog.branch}
+    hash={resetDialog.hash}
+    shortHash={resetDialog.shortHash}
+    subject={resetDialog.subject}
+    onConfirm={(mode) =>
+      resetDialog && handleResetToCommit(resetDialog.hash, mode)}
+    onCancel={() => (resetDialog = null)}
+  />
+{/if}
+
+{#if revertDialog}
+  <RevertCommitDialog
+    shortHash={revertDialog.shortHash}
+    subject={revertDialog.subject}
+    onConfirm={() => revertDialog && handleRevertCommit(revertDialog.hash)}
+    onCancel={() => (revertDialog = null)}
+  />
+{/if}
+
+{#if cherryPickDialog}
+  <CherryPickDialog
+    shortHash={cherryPickDialog.shortHash}
+    subject={cherryPickDialog.subject}
+    targetBranch={sidebarData.branches.find((b) => b.current)?.name ?? null}
+    onConfirm={() =>
+      cherryPickDialog && handleCherryPick(cherryPickDialog.hash)}
+    onCancel={() => (cherryPickDialog = null)}
+  />
+{/if}
+
+{#if pushRevisionDialog}
+  <PushRevisionDialog
+    hash={pushRevisionDialog.hash}
+    shortHash={pushRevisionDialog.shortHash}
+    remotes={sidebarData.remotes}
+    defaultBranch={sidebarData.branches.find((b) => b.current)?.name ?? ''}
+    onConfirm={(opts) =>
+      pushRevisionDialog && handlePushRevision(pushRevisionDialog.hash, opts)}
+    onCancel={() => (pushRevisionDialog = null)}
   />
 {/if}
 

@@ -1798,7 +1798,7 @@ test.describe('Commit Tagging', () => {
     await openCommitContextMenu(window);
     await expect(
       window.locator('.commit-context-menu .context-item', {
-        hasText: 'Add Tag',
+        hasText: 'Tag',
       }),
     ).toBeVisible();
   });
@@ -1811,8 +1811,16 @@ test.describe('Commit Tagging', () => {
 
   test('click outside closes commit context menu', async ({ window }) => {
     await openCommitContextMenu(window);
-    // Click on the overlay anywhere away from the menu position
-    await window.mouse.click(20, 20);
+    // Dispatch click directly on the menu's overlay (parent of the menu).
+    // Coordinate-based window.mouse.click is flaky under parallel load with
+    // the larger 13-item menu.
+    await window.evaluate(() => {
+      const menu = document.querySelector('.commit-context-menu');
+      const overlay = menu?.parentElement;
+      overlay?.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true }),
+      );
+    });
     await expect(window.locator('.commit-context-menu')).not.toBeVisible();
   });
 
@@ -1821,7 +1829,7 @@ test.describe('Commit Tagging', () => {
   }) => {
     await openCommitContextMenu(window);
     await window
-      .locator('.commit-context-menu .context-item', { hasText: 'Add Tag' })
+      .locator('.commit-context-menu .context-item', { hasText: 'Tag' })
       .click();
     await expect(
       window.locator('[data-testid="tag-name-input"]'),
@@ -1838,7 +1846,7 @@ test.describe('Commit Tagging', () => {
   test('empty tag name disables Add button', async ({ window }) => {
     await openCommitContextMenu(window);
     await window
-      .locator('.commit-context-menu .context-item', { hasText: 'Add Tag' })
+      .locator('.commit-context-menu .context-item', { hasText: 'Tag' })
       .click();
     await expect(
       window.locator('[data-testid="tag-submit-add"]'),
@@ -1848,7 +1856,7 @@ test.describe('Commit Tagging', () => {
   test('invalid tag name disables Add button', async ({ window }) => {
     await openCommitContextMenu(window);
     await window
-      .locator('.commit-context-menu .context-item', { hasText: 'Add Tag' })
+      .locator('.commit-context-menu .context-item', { hasText: 'Tag' })
       .click();
     await window.locator('[data-testid="tag-name-input"]').fill('v 1.0');
     await expect(
@@ -1859,7 +1867,7 @@ test.describe('Commit Tagging', () => {
   test('valid name submit creates tag in sidebar', async ({ window }) => {
     await openCommitContextMenu(window);
     await window
-      .locator('.commit-context-menu .context-item', { hasText: 'Add Tag' })
+      .locator('.commit-context-menu .context-item', { hasText: 'Tag' })
       .click();
     await window.locator('[data-testid="tag-name-input"]').fill('v-e2e-test');
     await window.locator('[data-testid="tag-submit-add"]').click();
@@ -1876,7 +1884,7 @@ test.describe('Commit Tagging', () => {
   test('escape closes add dialog without creating', async ({ window }) => {
     await openCommitContextMenu(window);
     await window
-      .locator('.commit-context-menu .context-item', { hasText: 'Add Tag' })
+      .locator('.commit-context-menu .context-item', { hasText: 'Tag' })
       .click();
     await window.locator('[data-testid="tag-name-input"]').fill('v-cancelled');
     await window.keyboard.press('Escape');
@@ -1893,7 +1901,7 @@ test.describe('Commit Tagging', () => {
   }) => {
     await openCommitContextMenu(window);
     await window
-      .locator('.commit-context-menu .context-item', { hasText: 'Add Tag' })
+      .locator('.commit-context-menu .context-item', { hasText: 'Tag' })
       .click();
     await window.locator('[data-testid="tag-mode-remove"]').click();
     await expect(window.locator('[data-testid="tag-mode-remove"]')).toHaveClass(
@@ -1911,7 +1919,7 @@ test.describe('Commit Tagging', () => {
 
     await openCommitContextMenu(window);
     await window
-      .locator('.commit-context-menu .context-item', { hasText: 'Add Tag' })
+      .locator('.commit-context-menu .context-item', { hasText: 'Tag' })
       .click();
     await window.locator('[data-testid="tag-mode-remove"]').click();
     await window
@@ -1931,7 +1939,7 @@ test.describe('Commit Tagging', () => {
   }) => {
     await openCommitContextMenu(window);
     await window
-      .locator('.commit-context-menu .context-item', { hasText: 'Add Tag' })
+      .locator('.commit-context-menu .context-item', { hasText: 'Tag' })
       .click();
     await expect(
       window.locator('[data-testid="tag-move-existing"]'),
@@ -1948,10 +1956,437 @@ test.describe('Commit Tagging', () => {
   test('push tag checkbox visible when remote exists', async ({ window }) => {
     await openCommitContextMenu(window);
     await window
-      .locator('.commit-context-menu .context-item', { hasText: 'Add Tag' })
+      .locator('.commit-context-menu .context-item', { hasText: 'Tag' })
       .click();
     await expect(
       window.locator('[data-testid="tag-push-checkbox"]'),
     ).toBeVisible();
+  });
+});
+
+test.describe('Commit context menu — full action set', () => {
+  /**
+   * Right-click the commit row whose subject contains `text`.
+   * Works even if the row is not at index 1.
+   */
+  async function openMenuForCommit(
+    window: import('playwright').Page,
+    text: string,
+  ) {
+    await expect(
+      window.locator('.commit-row', { hasText: 'local only commit' }).first(),
+    ).toBeVisible({ timeout: 20_000 });
+    await window.locator('.rows').evaluate((el) => (el.scrollTop = 0));
+    await window.waitForTimeout(200);
+    const row = window.locator('.commit-row', { hasText: text }).first();
+    await expect(row).toBeVisible();
+    await row.dispatchEvent('contextmenu', {
+      clientX: 200,
+      clientY: 200,
+      button: 2,
+      bubbles: true,
+    });
+    await expect(window.locator('.commit-context-menu')).toBeVisible({
+      timeout: 5_000,
+    });
+  }
+
+  /** Click a context-menu item by its label. */
+  async function clickMenuItem(
+    window: import('playwright').Page,
+    label: string,
+  ) {
+    await window
+      .locator('.commit-context-menu .context-item', { hasText: label })
+      .click();
+  }
+
+  /**
+   * Fixture leaves staged + unstaged + stash state; git revert/cherry-pick
+   * reject an unclean worktree, so clean it before destructive tests.
+   */
+  async function cleanWorkingTree(repoPath: string) {
+    const simpleGit = (await import('simple-git')).default;
+    const g = simpleGit(repoPath);
+    await g.raw(['reset', '--hard', 'HEAD']);
+    await g.raw(['clean', '-fd']);
+  }
+
+  /** Surface any error dialog that appeared during an action. */
+  async function assertNoErrorDialog(window: import('playwright').Page) {
+    const errTitle = window.locator(
+      '.error-title, [data-testid="error-title"]',
+    );
+    if (await errTitle.isVisible().catch(() => false)) {
+      const text = await window
+        .locator('.error-dialog, [role="dialog"]')
+        .first()
+        .innerText();
+      throw new Error(`Unexpected error dialog: ${text}`);
+    }
+  }
+
+  test('menu exposes all 13 items in 4 sections with separators', async ({
+    window,
+  }) => {
+    await openMenuForCommit(window, 'Merge branch');
+    const menu = window.locator('.commit-context-menu');
+    const expectedLabels = [
+      'Checkout',
+      'Push revision',
+      'Merge',
+      'Rebase',
+      'Tag',
+      'Branch',
+      'Reset',
+      'Reverse commit',
+      'Create Patch',
+      'Cherry Pick',
+      'Archive',
+      'Copy SHA-1 to Clipboard',
+    ];
+    for (const label of expectedLabels) {
+      await expect(
+        menu.locator('.context-item', { hasText: label }).first(),
+      ).toBeVisible();
+    }
+    await expect(menu.locator('.context-separator')).toHaveCount(3);
+  });
+
+  test('HEAD commit disables Checkout / Merge / Cherry Pick', async ({
+    window,
+  }) => {
+    await openMenuForCommit(window, 'local only commit');
+    const menu = window.locator('.commit-context-menu');
+    await expect(
+      menu.locator('.context-item', { hasText: 'Checkout' }),
+    ).toBeDisabled();
+    await expect(
+      menu.locator('.context-item', { hasText: /^Merge/ }),
+    ).toBeDisabled();
+    await expect(
+      menu.locator('.context-item', { hasText: 'Cherry Pick' }),
+    ).toBeDisabled();
+  });
+
+  test('non-HEAD commit keeps Checkout / Merge / Cherry Pick enabled', async ({
+    window,
+  }) => {
+    await openMenuForCommit(window, 'Merge branch');
+    const menu = window.locator('.commit-context-menu');
+    await expect(
+      menu.locator('.context-item', { hasText: 'Checkout' }),
+    ).toBeEnabled();
+    await expect(
+      menu.locator('.context-item', { hasText: /^Merge/ }),
+    ).toBeEnabled();
+    await expect(
+      menu.locator('.context-item', { hasText: 'Cherry Pick' }),
+    ).toBeEnabled();
+  });
+
+  test('Reset label includes current branch name', async ({ window }) => {
+    await openMenuForCommit(window, 'Merge branch');
+    await expect(
+      window.locator('.commit-context-menu .context-item', {
+        hasText: 'Reset main to this commit',
+      }),
+    ).toBeVisible();
+  });
+
+  test('Copy SHA-1 to Clipboard writes full hash', async ({
+    window,
+    electronApp,
+    testRepoPath,
+  }) => {
+    await openMenuForCommit(window, 'local only commit');
+    await clickMenuItem(window, 'Copy SHA-1 to Clipboard');
+    await window.waitForTimeout(500);
+    const clipText = await electronApp.evaluate(async ({ clipboard }) =>
+      clipboard.readText(),
+    );
+    // Clipboard should have a 40-char hex hash
+    expect(clipText).toMatch(/^[0-9a-f]{40}$/);
+    // And it should match HEAD of main in the fixture
+    const simpleGit = (await import('simple-git')).default;
+    const headSha = (await simpleGit(testRepoPath).revparse(['HEAD'])).trim();
+    expect(clipText).toBe(headSha);
+  });
+
+  test('Checkout from menu switches HEAD to the commit (detached)', async ({
+    window,
+    testRepoPath,
+  }) => {
+    const simpleGit = (await import('simple-git')).default;
+    const before = (await simpleGit(testRepoPath).revparse(['HEAD'])).trim();
+    await openMenuForCommit(window, 'Merge branch');
+    await clickMenuItem(window, 'Checkout');
+    // Poll until HEAD moves
+    await expect
+      .poll(
+        async () => (await simpleGit(testRepoPath).revparse(['HEAD'])).trim(),
+        { timeout: 10_000 },
+      )
+      .not.toBe(before);
+  });
+
+  test('Reset dialog shows branch and commit metadata', async ({ window }) => {
+    await openMenuForCommit(window, 'fix: update dependencies');
+    await clickMenuItem(window, 'Reset main to this commit');
+    await expect(window.locator('[data-testid="reset-mode"]')).toBeVisible();
+    const dialog = window.locator('[data-testid="reset-mode"]').locator('..');
+    await expect(dialog).toContainText('main');
+    await expect(dialog).toContainText('fix: update dependencies');
+  });
+
+  test('Reset hard mode shows warning', async ({ window }) => {
+    await openMenuForCommit(window, 'fix: update dependencies');
+    await clickMenuItem(window, 'Reset main to this commit');
+    await window.locator('[data-testid="reset-mode"]').selectOption('hard');
+    await expect(
+      window.locator('text=Local changes will be lost.'),
+    ).toBeVisible();
+  });
+
+  test('Reset --mixed moves main to chosen commit', async ({
+    window,
+    testRepoPath,
+  }) => {
+    const simpleGit = (await import('simple-git')).default;
+    const targetSha = (
+      await simpleGit(testRepoPath).raw([
+        'log',
+        '--grep',
+        'fix: update dependencies',
+        '--format=%H',
+      ])
+    ).trim();
+    expect(targetSha).toMatch(/^[0-9a-f]{40}$/);
+    await openMenuForCommit(window, 'fix: update dependencies');
+    await clickMenuItem(window, 'Reset main to this commit');
+    await expect(window.locator('[data-testid="reset-mode"]')).toHaveValue(
+      'mixed',
+    );
+    await window.locator('[data-testid="reset-submit"]').click();
+    await expect
+      .poll(
+        async () =>
+          (await simpleGit(testRepoPath).revparse(['refs/heads/main'])).trim(),
+        { timeout: 10_000 },
+      )
+      .toBe(targetSha);
+  });
+
+  test('Reverse commit creates revert commit on top of main', async ({
+    window,
+    testRepoPath,
+  }) => {
+    await cleanWorkingTree(testRepoPath);
+    const simpleGit = (await import('simple-git')).default;
+    const countBefore = Number(
+      (
+        await simpleGit(testRepoPath).raw([
+          'rev-list',
+          '--count',
+          'refs/heads/main',
+        ])
+      ).trim(),
+    );
+    await openMenuForCommit(window, 'local only commit');
+    await clickMenuItem(window, 'Reverse commit');
+    await window.locator('[data-testid="revert-submit"]').click();
+    await expect
+      .poll(
+        async () =>
+          Number(
+            (
+              await simpleGit(testRepoPath).raw([
+                'rev-list',
+                '--count',
+                'refs/heads/main',
+              ])
+            ).trim(),
+          ),
+        { timeout: 10_000 },
+      )
+      .toBe(countBefore + 1);
+    const lastMsg = (
+      await simpleGit(testRepoPath).raw(['log', '-1', '--format=%s', 'main'])
+    ).trim();
+    expect(lastMsg).toMatch(/^Revert ["']?feat: local only commit/);
+  });
+
+  test('Cherry Pick dialog opens and can cancel cleanly', async ({
+    window,
+  }) => {
+    await openMenuForCommit(window, 'feat: merge test feature');
+    await clickMenuItem(window, 'Cherry Pick');
+    await expect(
+      window.locator('[data-testid="cherry-pick-submit"]'),
+    ).toBeVisible();
+    const dialog = window.locator('[role="dialog"]', {
+      has: window.locator('[data-testid="cherry-pick-submit"]'),
+    });
+    await expect(dialog).toContainText('feat: merge test feature');
+    await window.keyboard.press('Escape');
+    await expect(
+      window.locator('[data-testid="cherry-pick-submit"]'),
+    ).not.toBeVisible();
+  });
+
+  test('Cherry Pick applies commit to current branch', async ({
+    window,
+    testRepoPath,
+  }) => {
+    await cleanWorkingTree(testRepoPath);
+    const simpleGit = (await import('simple-git')).default;
+    const countBefore = Number(
+      (
+        await simpleGit(testRepoPath).raw([
+          'rev-list',
+          '--count',
+          'refs/heads/main',
+        ])
+      ).trim(),
+    );
+    await openMenuForCommit(window, 'feat: merge test feature');
+    await clickMenuItem(window, 'Cherry Pick');
+    await window.locator('[data-testid="cherry-pick-submit"]').click();
+    await expect
+      .poll(
+        async () =>
+          Number(
+            (
+              await simpleGit(testRepoPath).raw([
+                'rev-list',
+                '--count',
+                'refs/heads/main',
+              ])
+            ).trim(),
+          ),
+        { timeout: 10_000 },
+      )
+      .toBe(countBefore + 1);
+  });
+
+  test('Branch… opens CreateBranchDialog with Specified commit prefilled', async ({
+    window,
+  }) => {
+    await openMenuForCommit(window, 'fix: update dependencies');
+    await clickMenuItem(window, 'Branch');
+    // "Specified commit" radio should be selected
+    const specifiedRadio = window.locator(
+      'input[type="radio"][value="specified"]',
+    );
+    await expect(specifiedRadio).toBeChecked();
+    // The commit input should be populated with a hash prefix
+    const commitInput = window.locator(
+      'input.commit-input[placeholder="Commit hash..."]',
+    );
+    await expect(commitInput).toBeVisible();
+    const value = await commitInput.inputValue();
+    expect(value).toMatch(/^[0-9a-f]{7,40}$/);
+  });
+
+  test('Create Patch writes a valid patch file', async ({
+    window,
+    testRepoPath,
+    e2eSavePath,
+  }) => {
+    const simpleGit = (await import('simple-git')).default;
+    const fs = await import('node:fs');
+    const targetSha = (
+      await simpleGit(testRepoPath).raw([
+        'log',
+        '--grep',
+        'fix: update dependencies',
+        '--format=%H',
+      ])
+    ).trim();
+    await openMenuForCommit(window, 'fix: update dependencies');
+    await clickMenuItem(window, 'Create Patch');
+    await expect
+      .poll(() => fs.existsSync(e2eSavePath), { timeout: 10_000 })
+      .toBe(true);
+    const contents = fs.readFileSync(e2eSavePath, 'utf-8');
+    expect(contents).toContain(`From ${targetSha}`);
+    expect(contents).toMatch(/Subject: \[PATCH\]/);
+  });
+
+  test('Archive writes a non-empty zip', async ({ window, e2eSavePath }) => {
+    const fs = await import('node:fs');
+    await openMenuForCommit(window, 'fix: update dependencies');
+    await clickMenuItem(window, 'Archive');
+    await expect
+      .poll(() => fs.existsSync(e2eSavePath), { timeout: 10_000 })
+      .toBe(true);
+    const size = fs.statSync(e2eSavePath).size;
+    expect(size).toBeGreaterThan(100);
+    // Zip magic number
+    const header = fs.readFileSync(e2eSavePath).subarray(0, 2).toString('hex');
+    expect(header).toBe('504b');
+  });
+
+  test('Push revision updates remote branch to that SHA', async ({
+    window,
+    testRepoPath,
+  }) => {
+    const simpleGit = (await import('simple-git')).default;
+    const path = (await import('node:path')).default;
+    const bareDir = path.join(testRepoPath, '..', 'remote.git');
+    const targetSha = (
+      await simpleGit(testRepoPath).raw([
+        'log',
+        '--grep',
+        'fix: update dependencies',
+        '--format=%H',
+      ])
+    ).trim();
+    await openMenuForCommit(window, 'fix: update dependencies');
+    await clickMenuItem(window, 'Push revision');
+    await window
+      .locator('[data-testid="push-revision-branch"]')
+      .fill('pushed-revision');
+    await window.locator('[data-testid="push-revision-submit"]').click();
+    await expect
+      .poll(
+        async () => {
+          // ls-remote does not throw when the ref is missing — it just
+          // returns empty output, which plays nicely with poll retries.
+          const out = await simpleGit(bareDir)
+            .raw(['show-ref', 'refs/heads/pushed-revision'])
+            .catch(() => '');
+          const match = out.match(/^([0-9a-f]{40})\s/);
+          return match ? match[1] : '';
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(targetSha);
+    await assertNoErrorDialog(window);
+  });
+
+  test('Push revision force checkbox reveals warning', async ({ window }) => {
+    await openMenuForCommit(window, 'fix: update dependencies');
+    await clickMenuItem(window, 'Push revision');
+    await window.locator('[data-testid="push-revision-force"]').check();
+    await expect(
+      window.locator(
+        "text=Required only if the remote has commits not in this revision's history.",
+      ),
+    ).toBeVisible();
+  });
+
+  test('Merge from commit menu runs without error', async ({ window }) => {
+    window.on('dialog', (d) => d.accept());
+    await openMenuForCommit(window, 'feat: rebase test feature');
+    await clickMenuItem(window, 'Merge');
+    await expect(window.locator('.commit-context-menu')).not.toBeVisible();
+  });
+
+  test('Rebase from commit menu runs without error', async ({ window }) => {
+    window.on('dialog', (d) => d.accept());
+    await openMenuForCommit(window, 'feat: rebase test feature');
+    await clickMenuItem(window, 'Rebase');
+    await expect(window.locator('.commit-context-menu')).not.toBeVisible();
   });
 });

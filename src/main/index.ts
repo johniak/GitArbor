@@ -231,6 +231,21 @@ ipcMain.handle(IPC.SHELL_OPEN_FILE, async (_event, filePath: string) => {
   await shell.openPath(path.join(root, filePath));
 });
 
+/**
+ * Wrap dialog.showSaveDialog so e2e tests can bypass the native picker by
+ * setting E2E_SAVE_PATH to a fixed file path. In production the real Electron
+ * dialog is shown.
+ */
+async function showSaveDialog(
+  win: BrowserWindow | null,
+  opts: Electron.SaveDialogOptions,
+): Promise<{ canceled: boolean; filePath?: string }> {
+  if (process.env.E2E_SAVE_PATH) {
+    return { canceled: false, filePath: process.env.E2E_SAVE_PATH };
+  }
+  return await dialog.showSaveDialog(win!, opts);
+}
+
 ipcMain.handle(
   IPC.GIT_CREATE_PATCH,
   async (
@@ -242,12 +257,112 @@ ipcMain.handle(
 
     const win = BrowserWindow.getFocusedWindow();
     const defaultName = filePath.replace(/\//g, '_') + '.patch';
-    const result = await dialog.showSaveDialog(win!, {
+    const result = await showSaveDialog(win, {
       defaultPath: defaultName,
       filters: [{ name: 'Patch files', extensions: ['patch', 'diff'] }],
     });
     if (result.canceled || !result.filePath) return;
     fs.writeFileSync(result.filePath, raw, 'utf-8');
+  },
+);
+
+function notifyRepoChanged() {
+  BrowserWindow.getAllWindows().forEach((win) => {
+    win.webContents.send(IPC.REPO_CHANGED, repoManager?.getCurrentPath());
+  });
+}
+
+ipcMain.handle(
+  IPC.GIT_RESET,
+  async (
+    _event,
+    { hash, mode }: { hash: string; mode: 'soft' | 'mixed' | 'hard' },
+  ) => {
+    await getGitService().resetToCommit(hash, mode);
+    notifyRepoChanged();
+  },
+);
+
+ipcMain.handle(IPC.GIT_REVERT, async (_event, hash: string) => {
+  try {
+    const res = await getGitService().revertCommit(hash);
+    notifyRepoChanged();
+    return res;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('[main] revert error:', msg);
+    return { conflicts: [], summary: '', error: msg };
+  }
+});
+
+ipcMain.handle(IPC.GIT_CHERRY_PICK, async (_event, hash: string) => {
+  try {
+    const res = await getGitService().cherryPick(hash);
+    notifyRepoChanged();
+    return res;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('[main] cherry-pick error:', msg);
+    return { conflicts: [], summary: '', error: msg };
+  }
+});
+
+ipcMain.handle(
+  IPC.GIT_ARCHIVE,
+  async (
+    _event,
+    { hash, defaultName }: { hash: string; defaultName: string },
+  ) => {
+    const win = BrowserWindow.getFocusedWindow();
+    const result = await showSaveDialog(win, {
+      defaultPath: defaultName,
+      filters: [
+        { name: 'Zip archive', extensions: ['zip'] },
+        { name: 'Tar archive', extensions: ['tar'] },
+      ],
+    });
+    if (result.canceled || !result.filePath) return { canceled: true };
+    const format = result.filePath.toLowerCase().endsWith('.tar')
+      ? 'tar'
+      : 'zip';
+    await getGitService().archiveCommit(hash, result.filePath, format);
+    return { canceled: false };
+  },
+);
+
+ipcMain.handle(
+  IPC.GIT_CREATE_PATCH_FROM_COMMIT,
+  async (
+    _event,
+    { hash, defaultName }: { hash: string; defaultName: string },
+  ) => {
+    const raw = await getGitService().formatPatchFromCommit(hash);
+    if (!raw.trim()) return { canceled: true };
+
+    const win = BrowserWindow.getFocusedWindow();
+    const result = await showSaveDialog(win, {
+      defaultPath: defaultName,
+      filters: [{ name: 'Patch files', extensions: ['patch', 'diff'] }],
+    });
+    if (result.canceled || !result.filePath) return { canceled: true };
+    fs.writeFileSync(result.filePath, raw, 'utf-8');
+    return { canceled: false };
+  },
+);
+
+ipcMain.handle(
+  IPC.GIT_PUSH_REVISION,
+  async (
+    _event,
+    {
+      remote,
+      hash,
+      branch,
+      force,
+    }: { remote: string; hash: string; branch: string; force?: boolean },
+  ) => {
+    await getGitService().pushRevision(remote, hash, branch, force);
+    notifyRepoChanged();
   },
 );
 

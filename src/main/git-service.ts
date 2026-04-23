@@ -529,6 +529,72 @@ export class GitService {
     await this.git.checkout(target);
   }
 
+  async resetToCommit(
+    hash: string,
+    mode: 'soft' | 'mixed' | 'hard',
+  ): Promise<void> {
+    await this.git.raw(['reset', `--${mode}`, hash]);
+  }
+
+  async revertCommit(
+    hash: string,
+  ): Promise<{ conflicts: string[]; summary: string }> {
+    try {
+      await this.git.raw(['revert', '--no-edit', hash]);
+      return { conflicts: [], summary: 'Revert completed' };
+    } catch (e) {
+      const status = await this.git.status();
+      if (status.conflicted.length > 0) {
+        return { conflicts: status.conflicted, summary: 'Revert conflicts' };
+      }
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new Error(`Revert ${hash} failed: ${msg}`, { cause: e });
+    }
+  }
+
+  async cherryPick(
+    hash: string,
+  ): Promise<{ conflicts: string[]; summary: string }> {
+    try {
+      await this.git.raw(['cherry-pick', hash]);
+      return { conflicts: [], summary: 'Cherry-pick completed' };
+    } catch (e) {
+      const status = await this.git.status();
+      if (status.conflicted.length > 0) {
+        return {
+          conflicts: status.conflicted,
+          summary: 'Cherry-pick conflicts',
+        };
+      }
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new Error(`Cherry-pick ${hash} failed: ${msg}`, { cause: e });
+    }
+  }
+
+  async archiveCommit(
+    hash: string,
+    filePath: string,
+    format: 'zip' | 'tar',
+  ): Promise<void> {
+    await this.git.raw(['archive', `--format=${format}`, '-o', filePath, hash]);
+  }
+
+  async formatPatchFromCommit(hash: string): Promise<string> {
+    return await this.git.raw(['format-patch', '-1', hash, '--stdout']);
+  }
+
+  async pushRevision(
+    remote: string,
+    hash: string,
+    branch: string,
+    force?: boolean,
+  ): Promise<void> {
+    const args = ['push'];
+    if (force) args.push('--force-with-lease');
+    args.push(remote, `${hash}:refs/heads/${branch}`);
+    await this.git.raw(args);
+  }
+
   async createBranch(name: string, startPoint?: string): Promise<void> {
     const args = ['branch', name];
     if (startPoint) args.push(startPoint);

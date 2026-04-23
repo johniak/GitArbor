@@ -1,9 +1,21 @@
 <script lang="ts">
-  export type ContextMenuItem = {
-    label: string;
-    onSelect: () => void;
-    disabled?: boolean;
-  };
+  export type ContextMenuItem =
+    | {
+        label: string;
+        onSelect: () => void;
+        disabled?: boolean;
+      }
+    | { separator: true };
+
+  function isSeparator(item: ContextMenuItem): item is { separator: true } {
+    return 'separator' in item;
+  }
+
+  function isSelectable(
+    item: ContextMenuItem,
+  ): item is { label: string; onSelect: () => void; disabled?: boolean } {
+    return !isSeparator(item) && !item.disabled;
+  }
 
   type Props = {
     x: number;
@@ -47,7 +59,7 @@
     } else if (e.key === 'Enter' && focusedIndex >= 0) {
       e.preventDefault();
       const item = items[focusedIndex];
-      if (item && !item.disabled) activate(item);
+      if (item && isSelectable(item)) activate(item);
     }
   }
 
@@ -57,13 +69,13 @@
     let i = start;
     for (let step = 0; step < n; step++) {
       i = (i + dir + n) % n;
-      if (!items[i].disabled) return i;
+      if (isSelectable(items[i])) return i;
     }
     return start;
   }
 
   function activate(item: ContextMenuItem) {
-    if (item.disabled) return;
+    if (!isSelectable(item)) return;
     item.onSelect();
     onClose();
   }
@@ -88,17 +100,21 @@
     onclick={(e) => e.stopPropagation()}
   >
     {#each items as item, i}
-      <button
-        class="context-item"
-        class:focused={focusedIndex === i}
-        disabled={item.disabled}
-        role="menuitem"
-        tabindex="-1"
-        onmouseenter={() => (focusedIndex = i)}
-        onclick={() => activate(item)}
-      >
-        {item.label}
-      </button>
+      {#if isSeparator(item)}
+        <hr class="context-separator" />
+      {:else}
+        <button
+          class="context-item"
+          class:focused={focusedIndex === i}
+          disabled={item.disabled}
+          role="menuitem"
+          tabindex="-1"
+          onmouseenter={() => (focusedIndex = i)}
+          onclick={() => activate(item)}
+        >
+          {item.label}
+        </button>
+      {/if}
     {/each}
   </div>
 </div>
@@ -141,5 +157,12 @@
     color: var(--color-text-secondary);
     cursor: not-allowed;
     opacity: 0.5;
+  }
+
+  .context-separator {
+    height: 1px;
+    margin: 4px 8px;
+    background: var(--color-border);
+    border: 0;
   }
 </style>

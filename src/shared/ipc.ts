@@ -55,6 +55,12 @@ export const IPC = {
   GIT_DISCARD_FILE: 'git:discard-file',
   GIT_IGNORE_FILE: 'git:ignore-file',
   GIT_CREATE_PATCH: 'git:create-patch',
+  GIT_RESET: 'git:reset',
+  GIT_REVERT: 'git:revert',
+  GIT_CHERRY_PICK: 'git:cherry-pick',
+  GIT_ARCHIVE: 'git:archive',
+  GIT_CREATE_PATCH_FROM_COMMIT: 'git:create-patch-from-commit',
+  GIT_PUSH_REVISION: 'git:push-revision',
   GIT_STAGE_HUNK: 'git:stage-hunk',
   GIT_UNSTAGE_HUNK: 'git:unstage-hunk',
   GIT_STAGE_LINES: 'git:stage-lines',
@@ -124,6 +130,27 @@ export interface GitAPI {
   ignoreFile(path: string): Promise<void>;
   openFile(path: string): Promise<void>;
   createPatch(filePath: string, staged: boolean): Promise<void>;
+  resetToCommit(hash: string, mode: 'soft' | 'mixed' | 'hard'): Promise<void>;
+  revertCommit(
+    hash: string,
+  ): Promise<{ conflicts: string[]; summary: string; error?: string }>;
+  cherryPick(
+    hash: string,
+  ): Promise<{ conflicts: string[]; summary: string; error?: string }>;
+  archiveCommit(
+    hash: string,
+    defaultName: string,
+  ): Promise<{ canceled?: boolean }>;
+  createPatchFromCommit(
+    hash: string,
+    defaultName: string,
+  ): Promise<{ canceled?: boolean }>;
+  pushRevision(
+    remote: string,
+    hash: string,
+    branch: string,
+    force?: boolean,
+  ): Promise<void>;
   stageHunk(filePath: string, hunkIndex: number): Promise<void>;
   unstageHunk(filePath: string, hunkIndex: number): Promise<void>;
   stageLines(

@@ -104,6 +104,29 @@ const api: ElectronAPI = {
         hunkIndex,
         lineIndices,
       }),
+    resetToCommit: (hash: string, mode: 'soft' | 'mixed' | 'hard') =>
+      ipcRenderer.invoke(IPC.GIT_RESET, { hash, mode }),
+    revertCommit: (hash: string) => ipcRenderer.invoke(IPC.GIT_REVERT, hash),
+    cherryPick: (hash: string) => ipcRenderer.invoke(IPC.GIT_CHERRY_PICK, hash),
+    archiveCommit: (hash: string, defaultName: string) =>
+      ipcRenderer.invoke(IPC.GIT_ARCHIVE, { hash, defaultName }),
+    createPatchFromCommit: (hash: string, defaultName: string) =>
+      ipcRenderer.invoke(IPC.GIT_CREATE_PATCH_FROM_COMMIT, {
+        hash,
+        defaultName,
+      }),
+    pushRevision: (
+      remote: string,
+      hash: string,
+      branch: string,
+      force?: boolean,
+    ) =>
+      ipcRenderer.invoke(IPC.GIT_PUSH_REVISION, {
+        remote,
+        hash,
+        branch,
+        force,
+      }),
   },
   repo: {
     getCurrentPath: () => ipcRenderer.invoke(IPC.REPO_GET_CURRENT),

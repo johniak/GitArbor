@@ -1,6 +1,7 @@
 <script lang="ts">
   type Props = {
     currentBranch: string;
+    initialStartPoint?: string;
     onConfirm: (
       name: string,
       startPoint: string | undefined,
@@ -9,11 +10,14 @@
     onCancel: () => void;
   };
 
-  let { currentBranch, onConfirm, onCancel }: Props = $props();
+  let { currentBranch, initialStartPoint, onConfirm, onCancel }: Props =
+    $props();
 
   let branchName = $state('');
-  let commitMode = $state<'working' | 'specified'>('working');
-  let specifiedCommit = $state('');
+  let commitMode = $state<'working' | 'specified'>(
+    initialStartPoint ? 'specified' : 'working',
+  );
+  let specifiedCommit = $state(initialStartPoint ?? '');
   let checkoutAfter = $state(true);
 
   let slug = $derived(
