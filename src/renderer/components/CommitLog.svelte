@@ -388,6 +388,9 @@
     flex-shrink: 0;
     display: flex;
     align-items: center;
+    /* Left padding gives the HEAD dot in lane 0 room to render its
+       halo stroke without being clipped by overflow-x: clip. */
+    padding-left: 3px;
     /* Keep horizontal clip (graph column width), but allow vertical bleed
        so adjacent rows' GraphCell SVGs can overlap by 1px and avoid a
        subpixel seam on Linux. */
