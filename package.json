@@ -1,0 +1,80 @@
+{
+  "name": "gitarbor",
+  "productName": "GitArbor",
+  "version": "0.3.0",
+  "description": "A modern graphical Git client for Linux, macOS, and Windows.",
+  "license": "MIT",
+  "author": {
+    "name": "Jan Romaniak",
+    "email": "romaniak.jan@gmail.com"
+  },
+  "homepage": "https://github.com/johniak/gitarbor",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/johniak/gitarbor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/johniak/gitarbor/issues"
+  },
+  "keywords": [
+    "git",
+    "gui",
+    "electron",
+    "svelte",
+    "desktop",
+    "version-control"
+  ],
+  "main": ".vite/build/index.js",
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "test:e2e": "E2E_TEST=1 electron-forge package && playwright test",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.8.0",
+    "@electron-forge/maker-deb": "^7.8.0",
+    "@electron-forge/maker-rpm": "^7.11.1",
+    "@electron-forge/maker-squirrel": "^7.8.0",
+    "@electron-forge/maker-zip": "^7.8.0",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.8.0",
+    "@electron-forge/plugin-fuses": "^7.8.0",
+    "@electron-forge/plugin-vite": "^7.8.0",
+    "@electron/fuses": "^1.8.0",
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.50.0",
+    "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "@tailwindcss/vite": "^4.2.2",
+    "@types/sql.js": "^1.4.11",
+    "electron": "^35.0.0",
+    "electron-playwright-helpers": "^2.1.0",
+    "eslint": "^10.2.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-svelte": "^3.17.0",
+    "globals": "^17.4.0",
+    "prettier": "^3.8.1",
+    "prettier-plugin-svelte": "^3.5.1",
+    "svelte": "^5.0.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.58.1",
+    "vite": "^6.0.0",
+    "vitest": "^4.1.4"
+  },
+  "dependencies": {
+    "@humanspeak/svelte-virtual-list": "^0.4.6",
+    "@lucide/svelte": "^1.8.0",
+    "@skeletonlabs/skeleton": "^4.15.1",
+    "@skeletonlabs/skeleton-svelte": "^4.15.1",
+    "drizzle-orm": "^0.45.2",
+    "fuzzysort": "^3.1.0",
+    "simple-git": "^3.35.2",
+    "sql.js": "^1.14.1"
+  }
+}

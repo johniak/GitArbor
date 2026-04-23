@@ -1,0 +1,31 @@
+# Dependencies & lockfiles
+node_modules/
+bun.lock
+package-lock.json
+yarn.lock
+
+# Build output
+.vite/
+out/
+dist/
+
+# Test artifacts
+test-results/
+playwright-report/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# Tool state — kept locally but never committed
+CLAUDE.md
+.claude/
+.serena/
+.superpowers/
+docs/superpowers/

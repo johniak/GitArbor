@@ -1,0 +1,354 @@
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import fs from 'node:fs';
+import path from 'node:path';
+import simpleGit from 'simple-git';
+import { GitService } from './git-service';
+import { createDatabase } from './db';
+import { RepoManager } from './repo-manager';
+import {
+  configureRepoSettings,
+  flushRepoSettings,
+  loadRepoSettings,
+  updateRepoSettings,
+} from './repo-settings';
+import { IPC } from '../shared/ipc';
+import type { DeepPartial, RepoSettings } from '../shared/ipc';
+import { DEFAULT_REPO_SETTINGS } from '../shared/ipc';
+
+declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
+declare const MAIN_WINDOW_VITE_NAME: string;
+
+const repoPath = process.env.REPO_PATH || process.cwd();
+
+const defaultGit = new GitService(simpleGit(repoPath));
+let repoManager: RepoManager | null = null;
+
+const createWindow = (): void => {
+  const iconPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'icon_256.png')
+    : path.join(process.cwd(), 'build', 'icons', 'icon_256.png');
+
+  const mainWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    icon: iconPath,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+    },
+  });
+
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+  } else {
+    mainWindow.loadFile(
+      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+    );
+  }
+
+  // Refresh git status when window regains focus (skip in e2e — causes flaky tests)
+  if (process.env.NODE_ENV !== 'test') {
+    mainWindow.on('focus', () => {
+      mainWindow.webContents.send(
+        IPC.REPO_CHANGED,
+        repoManager?.getCurrentPath(),
+      );
+    });
+  }
+};
+
+// Git IPC handlers — delegate to repo manager's git service or default
+function getGitService(): GitService {
+  return repoManager?.getGitService() ?? defaultGit;
+}
+
+ipcMain.handle(IPC.GIT_GET_BRANCHES, () => getGitService().getBranches());
+ipcMain.handle(IPC.GIT_GET_REMOTES, () => getGitService().getRemotes());
+ipcMain.handle(IPC.GIT_GET_TAGS, () => getGitService().getTags());
+ipcMain.handle(IPC.GIT_GET_STASHES, () => getGitService().getStashes());
+ipcMain.handle(IPC.GIT_GET_COMMITS, (_event, opts) =>
+  getGitService().getCommits(opts),
+);
+ipcMain.handle(IPC.GIT_GET_COMMIT_BODY, (_event, hash: string) =>
+  getGitService().getCommitBody(hash),
+);
+ipcMain.handle(IPC.GIT_GET_COMMIT_FILES, (_event, hash: string) =>
+  getGitService().getCommitFiles(hash),
+);
+ipcMain.handle(
+  IPC.GIT_GET_FILE_DIFF,
+  (_event, { hash, filePath }: { hash: string; filePath: string }) =>
+    getGitService().getFileDiff(hash, filePath),
+);
+ipcMain.handle(IPC.GIT_GET_WORKING_STATUS, () =>
+  getGitService().getWorkingStatus(),
+);
+ipcMain.handle(
+  IPC.GIT_GET_WORKING_DIFF,
+  (_event, { filePath, staged }: { filePath: string; staged: boolean }) =>
+    getGitService().getWorkingDiff(filePath, staged),
+);
+ipcMain.handle(IPC.GIT_STAGE_FILE, (_event, path: string) =>
+  getGitService().stageFile(path),
+);
+ipcMain.handle(IPC.GIT_UNSTAGE_FILE, (_event, path: string) =>
+  getGitService().unstageFile(path),
+);
+ipcMain.handle(IPC.GIT_STAGE_ALL, () => getGitService().stageAll());
+ipcMain.handle(IPC.GIT_UNSTAGE_ALL, () => getGitService().unstageAll());
+ipcMain.handle(
+  IPC.GIT_COMMIT,
+  (
+    _event,
+    {
+      message,
+      amend,
+      noVerify,
+    }: { message: string; amend?: boolean; noVerify?: boolean },
+  ) => getGitService().commit(message, amend, noVerify),
+);
+ipcMain.handle(IPC.GIT_PULL, () => getGitService().pull());
+ipcMain.handle(IPC.GIT_PUSH, () => getGitService().push());
+ipcMain.handle(
+  IPC.GIT_PUSH_BRANCHES,
+  (
+    _event,
+    {
+      remote,
+      branches,
+      includeTags,
+    }: {
+      remote: string;
+      branches: Array<{
+        local: string;
+        remote?: string;
+        setUpstream?: boolean;
+      }>;
+      includeTags?: boolean;
+    },
+  ) => getGitService().pushBranches(remote, branches, includeTags),
+);
+ipcMain.handle(IPC.GIT_FETCH, () => getGitService().fetch());
+ipcMain.handle(
+  IPC.GIT_APPLY_STASH,
+  (_event, { index, drop }: { index: number; drop: boolean }) =>
+    getGitService().applyStash(index, drop),
+);
+ipcMain.handle(
+  IPC.GIT_STASH,
+  (_event, opts?: { message?: string; keepIndex?: boolean }) =>
+    getGitService().stash(opts?.message, opts?.keepIndex),
+);
+ipcMain.handle(IPC.GIT_MERGE, async (_event, branch: string) => {
+  try {
+    return await getGitService().merge(branch);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('[main] merge error:', msg);
+    return { conflicts: [], summary: '', error: msg };
+  }
+});
+ipcMain.handle(IPC.GIT_REBASE, async (_event, branch: string) => {
+  try {
+    return await getGitService().rebase(branch);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('[main] rebase error:', msg);
+    return { conflicts: [], summary: '', error: msg };
+  }
+});
+ipcMain.handle(IPC.GIT_GET_CONFIG, (_event, key: string) =>
+  getGitService().getConfig(key),
+);
+ipcMain.handle(
+  IPC.GIT_CREATE_BRANCH,
+  (_event, { name, startPoint }: { name: string; startPoint?: string }) =>
+    getGitService().createBranch(name, startPoint),
+);
+
+ipcMain.handle(
+  IPC.GIT_CREATE_TAG,
+  (
+    _event,
+    {
+      name,
+      commit,
+      opts,
+    }: {
+      name: string;
+      commit: string;
+      opts?: { message?: string; force?: boolean };
+    },
+  ) => getGitService().createTag(name, commit, opts),
+);
+
+ipcMain.handle(IPC.GIT_DELETE_TAG, (_event, name: string) =>
+  getGitService().deleteTag(name),
+);
+
+ipcMain.handle(
+  IPC.GIT_PUSH_TAG,
+  (_event, { name, remote }: { name: string; remote: string }) =>
+    getGitService().pushTag(name, remote),
+);
+
+ipcMain.handle(
+  IPC.GIT_DELETE_REMOTE_TAG,
+  (_event, { name, remote }: { name: string; remote: string }) =>
+    getGitService().deleteRemoteTag(name, remote),
+);
+
+ipcMain.handle(IPC.GIT_CHECKOUT, async (_event, target: string) => {
+  await getGitService().checkout(target);
+  // Notify renderer to reload
+  BrowserWindow.getAllWindows().forEach((win) => {
+    win.webContents.send(IPC.REPO_CHANGED, repoManager?.getCurrentPath());
+  });
+});
+
+ipcMain.handle(
+  IPC.GIT_DISCARD_FILE,
+  async (
+    _event,
+    { path: filePath, isUntracked }: { path: string; isUntracked: boolean },
+  ) => {
+    const git = getGitService();
+    // If file is staged, unstage first
+    try {
+      await git.unstageFile(filePath);
+    } catch {
+      // Not staged — fine
+    }
+    await git.discardFile(filePath, isUntracked);
+  },
+);
+
+ipcMain.handle(IPC.GIT_IGNORE_FILE, (_event, filePath: string) =>
+  getGitService().ignoreFile(filePath),
+);
+
+ipcMain.handle(IPC.SHELL_OPEN_FILE, async (_event, filePath: string) => {
+  const root = await getGitService().getRepoRoot();
+  await shell.openPath(path.join(root, filePath));
+});
+
+ipcMain.handle(
+  IPC.GIT_CREATE_PATCH,
+  async (
+    _event,
+    { filePath, staged }: { filePath: string; staged: boolean },
+  ) => {
+    const raw = await getGitService().createPatch(filePath, staged);
+    if (!raw.trim()) return;
+
+    const win = BrowserWindow.getFocusedWindow();
+    const defaultName = filePath.replace(/\//g, '_') + '.patch';
+    const result = await dialog.showSaveDialog(win!, {
+      defaultPath: defaultName,
+      filters: [{ name: 'Patch files', extensions: ['patch', 'diff'] }],
+    });
+    if (result.canceled || !result.filePath) return;
+    fs.writeFileSync(result.filePath, raw, 'utf-8');
+  },
+);
+
+ipcMain.handle(
+  IPC.GIT_STAGE_HUNK,
+  (_event, { filePath, hunkIndex }: { filePath: string; hunkIndex: number }) =>
+    getGitService().stageHunk(filePath, hunkIndex),
+);
+ipcMain.handle(
+  IPC.GIT_UNSTAGE_HUNK,
+  (_event, { filePath, hunkIndex }: { filePath: string; hunkIndex: number }) =>
+    getGitService().unstageHunk(filePath, hunkIndex),
+);
+ipcMain.handle(
+  IPC.GIT_STAGE_LINES,
+  (
+    _event,
+    {
+      filePath,
+      hunkIndex,
+      lineIndices,
+    }: { filePath: string; hunkIndex: number; lineIndices: number[] },
+  ) => getGitService().stageLines(filePath, hunkIndex, lineIndices),
+);
+ipcMain.handle(
+  IPC.GIT_UNSTAGE_LINES,
+  (
+    _event,
+    {
+      filePath,
+      hunkIndex,
+      lineIndices,
+    }: { filePath: string; hunkIndex: number; lineIndices: number[] },
+  ) => getGitService().unstageLines(filePath, hunkIndex, lineIndices),
+);
+ipcMain.handle(
+  IPC.GIT_DISCARD_LINES,
+  (
+    _event,
+    {
+      filePath,
+      hunkIndex,
+      lineIndices,
+    }: { filePath: string; hunkIndex: number; lineIndices: number[] },
+  ) => getGitService().discardLines(filePath, hunkIndex, lineIndices),
+);
+
+// Repo IPC handlers
+ipcMain.handle(
+  IPC.REPO_GET_CURRENT,
+  () => repoManager?.getCurrentPath() ?? null,
+);
+
+// Settings IPC handlers
+ipcMain.handle(IPC.SETTINGS_GET, (): RepoSettings => {
+  const current = repoManager?.getCurrentPath();
+  if (!current) return { ...DEFAULT_REPO_SETTINGS };
+  return loadRepoSettings(current);
+});
+
+ipcMain.handle(
+  IPC.SETTINGS_UPDATE,
+  (_event, patch: DeepPartial<RepoSettings>): RepoSettings => {
+    const current = repoManager?.getCurrentPath();
+    if (!current) return { ...DEFAULT_REPO_SETTINGS };
+    // Renderer applies the same deep-merge optimistically, so skipping the
+    // broadcast avoids redundant re-renders that can cause DOM instability
+    // mid-interaction (e.g. right-click after click).
+    return updateRepoSettings(current, patch);
+  },
+);
+
+app.on('before-quit', () => {
+  flushRepoSettings();
+});
+
+app.on('ready', async () => {
+  createWindow();
+
+  try {
+    const userData = app.getPath('userData');
+    configureRepoSettings(userData);
+    const dbPath = path.join(userData, 'repositories.db');
+    const db = await createDatabase(dbPath);
+    repoManager = new RepoManager(db);
+    await repoManager.openRepo(repoPath);
+  } catch (e) {
+    console.error('[main] init error:', e);
+  }
+
+  repoManager?.buildMenu();
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
+  }
+});
