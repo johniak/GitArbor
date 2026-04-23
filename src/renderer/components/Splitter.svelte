@@ -41,12 +41,19 @@
 <style>
   .splitter {
     flex-shrink: 0;
+    position: relative;
+    background: transparent;
+  }
+
+  .splitter::before {
+    content: '';
+    position: absolute;
     background: var(--color-border);
     transition: background 0.15s;
   }
 
-  .splitter:hover,
-  .splitter.dragging {
+  .splitter:hover::before,
+  .splitter.dragging::before {
     background: var(--color-text-accent);
   }
 
@@ -55,8 +62,24 @@
     cursor: col-resize;
   }
 
+  .splitter-horizontal::before {
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: var(--splitter-line-size);
+    transform: translateX(-50%);
+  }
+
   .splitter-vertical {
     height: var(--splitter-size);
     cursor: row-resize;
+  }
+
+  .splitter-vertical::before {
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: var(--splitter-line-size);
+    transform: translateY(-50%);
   }
 </style>

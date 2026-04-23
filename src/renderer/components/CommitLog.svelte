@@ -48,7 +48,7 @@
   }
 
   const ROW_HEIGHT = 24;
-  const LANE_WIDTH = 16;
+  const LANE_WIDTH = 10;
   const LOAD_MORE_THRESHOLD = 200;
   const ROW_PADDING_LEFT = 12;
 

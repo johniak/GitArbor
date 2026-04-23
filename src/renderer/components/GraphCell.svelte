@@ -19,7 +19,7 @@
 
   let svgLanes = $derived(maxLanes ?? row.laneCount);
 
-  const DOT_RADIUS = 4;
+  const DOT_RADIUS = 3;
 
   function cx(lane: number): number {
     return lane * laneWidth + laneWidth / 2;
@@ -65,7 +65,7 @@
         x2={cx(seg.lane)}
         y2={height + 1}
         stroke={seg.color}
-        stroke-width={2}
+        stroke-width={1.5}
       />
     {/if}
   {/each}
@@ -79,7 +79,7 @@
         x2={cx(dot.lane)}
         y2={cy() - DOT_RADIUS}
         stroke={dot.color}
-        stroke-width={2}
+        stroke-width={1.5}
       />
     {/if}
     {#if hasLineBelow}
@@ -89,7 +89,7 @@
         x2={cx(dot.lane)}
         y2={height + 1}
         stroke={dot.color}
-        stroke-width={2}
+        stroke-width={1.5}
       />
     {/if}
   {/if}
@@ -123,10 +123,10 @@
     <circle
       cx={cx(dot.lane)}
       cy={cy()}
-      r={isHead ? 6 : DOT_RADIUS}
+      r={isHead ? 5 : DOT_RADIUS}
       fill={dot.color}
       stroke={isHead ? 'var(--color-text-white)' : 'none'}
-      stroke-width={isHead ? 1.5 : 0}
+      stroke-width={isHead ? 1.25 : 0}
     />
   {/if}
 </svg>

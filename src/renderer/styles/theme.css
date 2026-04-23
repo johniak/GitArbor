@@ -26,5 +26,6 @@
 
   --color-icon: #569cd6;
 
-  --splitter-size: 3px;
+  --splitter-size: 4px;
+  --splitter-line-size: 1px;
 }
