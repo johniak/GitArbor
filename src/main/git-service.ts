@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { SimpleGit } from 'simple-git';
+import simpleGit, { type SimpleGit } from 'simple-git';
 import type {
   Branch,
   Remote,
@@ -841,4 +841,25 @@ export class GitService {
     const filtered = this.filterRawHunk(hunks[hunkIndex], lineIndices, true);
     await this.applyPatchRaw(header + filtered, ['-R']);
   }
+}
+
+/** Clone a remote repository into destPath. */
+export async function cloneRepository(
+  url: string,
+  destPath: string,
+): Promise<void> {
+  fs.mkdirSync(path.dirname(destPath), { recursive: true });
+  await simpleGit().clone(url, destPath);
+}
+
+/** Initialise a new empty repository at destPath. */
+export async function initRepository(destPath: string): Promise<void> {
+  fs.mkdirSync(destPath, { recursive: true });
+  await simpleGit(destPath).init();
+}
+
+/** Check whether a directory is a git working copy (has .git dir or file). */
+export function isGitRepository(dirPath: string): boolean {
+  const gitEntry = path.join(dirPath, '.git');
+  return fs.existsSync(gitEntry);
 }

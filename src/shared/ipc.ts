@@ -69,6 +69,16 @@ export const IPC = {
   SHELL_OPEN_FILE: 'shell:open-file',
   REPO_GET_CURRENT: 'repo:get-current',
   REPO_CHANGED: 'repo:changed',
+  REPO_LOAD_LIST: 'repo:load-list',
+  REPO_OPEN: 'repo:open',
+  REPO_REMOVE_FROM_LIST: 'repo:remove-from-list',
+  REPO_ADD_EXISTING: 'repo:add-existing',
+  REPO_CLONE: 'repo:clone',
+  REPO_INIT_LOCAL: 'repo:init-local',
+  REPO_SCAN: 'repo:scan',
+  REPO_SET_FAVOURITE: 'repo:set-favourite',
+  DIALOG_PICK_DIRECTORY: 'dialog:pick-directory',
+  WINDOW_SHOW_BROWSER: 'window:show-browser',
   SETTINGS_GET: 'settings:get',
   SETTINGS_UPDATE: 'settings:update',
 } as const;
@@ -170,9 +180,34 @@ export interface GitAPI {
   ): Promise<void>;
 }
 
+export interface RepoListEntry {
+  path: string;
+  name: string;
+  isFavourite: boolean;
+  lastOpenedAt: number;
+}
+
 export interface RepoAPI {
   getCurrentPath(): Promise<string | null>;
   onRepoChanged(callback: (path: string) => void): void;
+  loadList(): Promise<RepoListEntry[]>;
+  open(path: string): Promise<{ success: boolean; error?: string }>;
+  removeFromList(path: string): Promise<void>;
+  addExisting(path: string): Promise<RepoListEntry | null>;
+  clone(
+    url: string,
+    destPath: string,
+  ): Promise<{ entry?: RepoListEntry; error?: string }>;
+  initLocal(
+    destPath: string,
+  ): Promise<{ entry?: RepoListEntry; error?: string }>;
+  scan(rootPath: string): Promise<RepoListEntry[]>;
+  setFavourite(path: string, value: boolean): Promise<void>;
+  pickDirectory(options?: {
+    title?: string;
+    defaultPath?: string;
+  }): Promise<string | null>;
+  showBrowser(): Promise<void>;
 }
 
 export interface SettingsAPI {

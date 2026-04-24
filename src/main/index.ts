@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import simpleGit from 'simple-git';
-import { GitService } from './git-service';
+import { GitService, cloneRepository, initRepository } from './git-service';
 import { createDatabase } from './db';
 import { RepoManager } from './repo-manager';
 import {
@@ -22,39 +22,100 @@ const repoPath = process.env.REPO_PATH || process.cwd();
 
 const defaultGit = new GitService(simpleGit(repoPath));
 let repoManager: RepoManager | null = null;
+let mainWindow: BrowserWindow | null = null;
+let repoBrowserWindow: BrowserWindow | null = null;
 
-const createWindow = (): void => {
-  const iconPath = app.isPackaged
+function getIconPath(): string {
+  return app.isPackaged
     ? path.join(process.resourcesPath, 'icon_256.png')
     : path.join(process.cwd(), 'build', 'icons', 'icon_256.png');
+}
 
-  const mainWindow = new BrowserWindow({
+function createMainWindow(): BrowserWindow {
+  const win = new BrowserWindow({
     width: 1200,
     height: 800,
-    icon: iconPath,
+    icon: getIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },
   });
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+    win.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
-    mainWindow.loadFile(
+    win.loadFile(
       path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
     );
   }
 
-  // Refresh git status when window regains focus (skip in e2e — causes flaky tests)
   if (process.env.NODE_ENV !== 'test') {
-    mainWindow.on('focus', () => {
-      mainWindow.webContents.send(
-        IPC.REPO_CHANGED,
-        repoManager?.getCurrentPath(),
-      );
+    win.on('focus', () => {
+      win.webContents.send(IPC.REPO_CHANGED, repoManager?.getCurrentPath());
     });
   }
-};
+
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null;
+    repoManager?.buildMenu();
+  });
+
+  return win;
+}
+
+function createRepoBrowserWindow(): BrowserWindow {
+  const win = new BrowserWindow({
+    width: 760,
+    height: 900,
+    icon: getIconPath(),
+    title: 'Repository Browser',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+    },
+  });
+
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    const base = MAIN_WINDOW_VITE_DEV_SERVER_URL.endsWith('/')
+      ? MAIN_WINDOW_VITE_DEV_SERVER_URL
+      : `${MAIN_WINDOW_VITE_DEV_SERVER_URL}/`;
+    win.loadURL(`${base}repo-browser.html`);
+  } else {
+    win.loadFile(
+      path.join(
+        __dirname,
+        `../renderer/${MAIN_WINDOW_VITE_NAME}/repo-browser.html`,
+      ),
+    );
+  }
+
+  win.on('closed', () => {
+    if (repoBrowserWindow === win) repoBrowserWindow = null;
+  });
+
+  return win;
+}
+
+function showRepoBrowser(): BrowserWindow {
+  if (repoBrowserWindow && !repoBrowserWindow.isDestroyed()) {
+    if (repoBrowserWindow.isMinimized()) repoBrowserWindow.restore();
+    repoBrowserWindow.show();
+    repoBrowserWindow.focus();
+    return repoBrowserWindow;
+  }
+  repoBrowserWindow = createRepoBrowserWindow();
+  return repoBrowserWindow;
+}
+
+function ensureMainWindow(): BrowserWindow {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+    return mainWindow;
+  }
+  mainWindow = createMainWindow();
+  return mainWindow;
+}
 
 // Git IPC handlers — delegate to repo manager's git service or default
 function getGitService(): GitService {
@@ -416,6 +477,90 @@ ipcMain.handle(
   () => repoManager?.getCurrentPath() ?? null,
 );
 
+ipcMain.handle(IPC.REPO_LOAD_LIST, () => repoManager?.loadRepoList() ?? []);
+
+ipcMain.handle(IPC.REPO_OPEN, async (_event, targetPath: string) => {
+  if (!repoManager) return { success: false, error: 'Repo manager not ready' };
+  try {
+    const ok = await repoManager.openRepo(targetPath);
+    if (!ok) return { success: false, error: 'Not a valid git repository' };
+    ensureMainWindow();
+    return { success: true };
+  } catch (e) {
+    return {
+      success: false,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+});
+
+ipcMain.handle(IPC.REPO_REMOVE_FROM_LIST, (_event, targetPath: string) => {
+  repoManager?.removeFromList(targetPath);
+});
+
+ipcMain.handle(IPC.REPO_ADD_EXISTING, (_event, targetPath: string) => {
+  return repoManager?.addExistingRepository(targetPath) ?? null;
+});
+
+ipcMain.handle(
+  IPC.REPO_CLONE,
+  async (_event, { url, destPath }: { url: string; destPath: string }) => {
+    try {
+      await cloneRepository(url, destPath);
+      const entry = repoManager?.addExistingRepository(destPath) ?? null;
+      return { entry };
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e) };
+    }
+  },
+);
+
+ipcMain.handle(IPC.REPO_INIT_LOCAL, async (_event, destPath: string) => {
+  try {
+    await initRepository(destPath);
+    const entry = repoManager?.addExistingRepository(destPath) ?? null;
+    return { entry };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+});
+
+ipcMain.handle(IPC.REPO_SCAN, (_event, rootPath: string) => {
+  return repoManager?.scanForRepositories(rootPath) ?? [];
+});
+
+ipcMain.handle(
+  IPC.REPO_SET_FAVOURITE,
+  (_event, { path: targetPath, value }: { path: string; value: boolean }) => {
+    repoManager?.setFavouriteFlag(targetPath, value);
+  },
+);
+
+ipcMain.handle(
+  IPC.DIALOG_PICK_DIRECTORY,
+  async (
+    _event,
+    opts?: { title?: string; defaultPath?: string },
+  ): Promise<string | null> => {
+    // E2E bypass — tests can pre-load a directory path via env.
+    if (process.env.E2E_PICK_DIRECTORY) {
+      return process.env.E2E_PICK_DIRECTORY;
+    }
+    const win = BrowserWindow.getFocusedWindow();
+    const result = await dialog.showOpenDialog(win!, {
+      title: opts?.title ?? 'Choose directory',
+      defaultPath: opts?.defaultPath,
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+  },
+);
+
+ipcMain.handle(IPC.WINDOW_SHOW_BROWSER, () => {
+  showRepoBrowser();
+});
+
 // Settings IPC handlers
 ipcMain.handle(IPC.SETTINGS_GET, (): RepoSettings => {
   const current = repoManager?.getCurrentPath();
@@ -440,15 +585,26 @@ app.on('before-quit', () => {
 });
 
 app.on('ready', async () => {
-  createWindow();
-
   try {
     const userData = app.getPath('userData');
     configureRepoSettings(userData);
     const dbPath = path.join(userData, 'repositories.db');
     const db = await createDatabase(dbPath);
     repoManager = new RepoManager(db);
-    await repoManager.openRepo(repoPath);
+    repoManager.setWindowControls({
+      showRepoBrowser,
+      focusMainWindow: () => mainWindow?.show(),
+      hasMainWindow: () => mainWindow !== null && !mainWindow.isDestroyed(),
+    });
+
+    // E2E + CLI usage: if REPO_PATH is explicitly provided, skip the
+    // browser and go straight into the main window for that repo.
+    if (process.env.REPO_PATH) {
+      await repoManager.openRepo(process.env.REPO_PATH);
+      ensureMainWindow();
+    } else {
+      showRepoBrowser();
+    }
   } catch (e) {
     console.error('[main] init error:', e);
   }
@@ -464,6 +620,6 @@ app.on('window-all-closed', () => {
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
+    showRepoBrowser();
   }
 });

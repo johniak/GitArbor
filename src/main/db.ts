@@ -148,3 +148,58 @@ export function isFavouriteRepo(db: AppDatabase, repoPath: string): boolean {
     .get();
   return row?.isFavourite === 1;
 }
+
+/**
+ * All repos known to the browser: favourites first (alpha), then the rest
+ * ordered by most-recently-opened.
+ */
+export function getAllRepositories(db: AppDatabase): Repository[] {
+  return db
+    .select()
+    .from(repositories)
+    .orderBy(desc(repositories.isFavourite), desc(repositories.lastOpenedAt))
+    .all();
+}
+
+export function addRepository(
+  db: AppDatabase,
+  repoPath: string,
+  options: { favourite?: boolean } = {},
+): Repository {
+  const name = path.basename(repoPath);
+  const now = Date.now();
+  // When the caller explicitly asks to favourite (e.g. added from the
+  // Repository Browser), promote the existing row too. Without that flag we
+  // leave is_favourite alone — re-opening via Recent shouldn't remove it
+  // from, or add it to, favourites.
+  const setOnConflict: {
+    lastOpenedAt: number;
+    name: string;
+    isFavourite?: number;
+  } = { lastOpenedAt: now, name };
+  if (options.favourite) setOnConflict.isFavourite = 1;
+
+  db.insert(repositories)
+    .values({
+      path: repoPath,
+      name,
+      lastOpenedAt: now,
+      isFavourite: options.favourite ? 1 : 0,
+    })
+    .onConflictDoUpdate({
+      target: repositories.path,
+      set: setOnConflict,
+    })
+    .run();
+  saveDatabase();
+  return db
+    .select()
+    .from(repositories)
+    .where(eq(repositories.path, repoPath))
+    .get()!;
+}
+
+export function removeRepository(db: AppDatabase, repoPath: string) {
+  db.delete(repositories).where(eq(repositories.path, repoPath)).run();
+  saveDatabase();
+}

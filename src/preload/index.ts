@@ -135,6 +135,22 @@ const api: ElectronAPI = {
         callback(path),
       );
     },
+    loadList: () => ipcRenderer.invoke(IPC.REPO_LOAD_LIST),
+    open: (path: string) => ipcRenderer.invoke(IPC.REPO_OPEN, path),
+    removeFromList: (path: string) =>
+      ipcRenderer.invoke(IPC.REPO_REMOVE_FROM_LIST, path),
+    addExisting: (path: string) =>
+      ipcRenderer.invoke(IPC.REPO_ADD_EXISTING, path),
+    clone: (url: string, destPath: string) =>
+      ipcRenderer.invoke(IPC.REPO_CLONE, { url, destPath }),
+    initLocal: (destPath: string) =>
+      ipcRenderer.invoke(IPC.REPO_INIT_LOCAL, destPath),
+    scan: (rootPath: string) => ipcRenderer.invoke(IPC.REPO_SCAN, rootPath),
+    setFavourite: (path: string, value: boolean) =>
+      ipcRenderer.invoke(IPC.REPO_SET_FAVOURITE, { path, value }),
+    pickDirectory: (opts?: { title?: string; defaultPath?: string }) =>
+      ipcRenderer.invoke(IPC.DIALOG_PICK_DIRECTORY, opts),
+    showBrowser: () => ipcRenderer.invoke(IPC.WINDOW_SHOW_BROWSER),
   },
   settings: {
     get: () => ipcRenderer.invoke(IPC.SETTINGS_GET),

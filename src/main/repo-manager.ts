@@ -1,23 +1,116 @@
 import { Menu, dialog, BrowserWindow } from 'electron';
 import simpleGit from 'simple-git';
 import fs from 'node:fs';
+import path from 'node:path';
 import {
   type AppDatabase,
+  type Repository,
   addRecentRepo,
+  addRepository,
   getRecentRepos,
   clearRecentRepos,
   getFavouriteRepos,
   isFavouriteRepo,
+  removeRepository,
   setFavourite,
 } from './db';
-import { GitService } from './git-service';
+import { GitService, isGitRepository } from './git-service';
 import { flushRepoSettings } from './repo-settings';
+
+export interface RepoListEntry {
+  path: string;
+  name: string;
+  isFavourite: boolean;
+  lastOpenedAt: number;
+}
+
+export interface WindowControls {
+  showRepoBrowser: () => void;
+  focusMainWindow: () => void;
+  hasMainWindow: () => boolean;
+}
 
 export class RepoManager {
   private currentPath: string | null = null;
   private gitService: GitService | null = null;
+  private windowControls: WindowControls | null = null;
 
   constructor(private db: AppDatabase) {}
+
+  setWindowControls(controls: WindowControls) {
+    this.windowControls = controls;
+  }
+
+  /**
+   * List repos to show in the Repository Browser. Only favourites — the
+   * Browser is a favourites list, not a full history. Non-favourite repos
+   * remain in the DB (used by the Repositories > Recent menu).
+   */
+  loadRepoList(): RepoListEntry[] {
+    return getFavouriteRepos(this.db).map((r: Repository) => ({
+      path: r.path,
+      name: r.name,
+      isFavourite: r.isFavourite === 1,
+      lastOpenedAt: r.lastOpenedAt,
+    }));
+  }
+
+  /**
+   * Add a repo via the Browser (from "Add Existing", "Clone", "Create
+   * Local", or "Scan Directory"). These land as favourites so they
+   * immediately appear in the browser list.
+   */
+  addExistingRepository(repoPath: string): RepoListEntry | null {
+    if (!fs.existsSync(repoPath) || !isGitRepository(repoPath)) return null;
+    const row = addRepository(this.db, repoPath, { favourite: true });
+    this.buildMenu();
+    return {
+      path: row.path,
+      name: row.name,
+      isFavourite: row.isFavourite === 1,
+      lastOpenedAt: row.lastOpenedAt,
+    };
+  }
+
+  removeFromList(repoPath: string) {
+    removeRepository(this.db, repoPath);
+    this.buildMenu();
+  }
+
+  setFavouriteFlag(repoPath: string, value: boolean) {
+    setFavourite(this.db, repoPath, value);
+    this.buildMenu();
+  }
+
+  scanForRepositories(rootPath: string, maxDepth = 4): RepoListEntry[] {
+    if (!fs.existsSync(rootPath)) return [];
+    const found: RepoListEntry[] = [];
+    const visit = (dir: string, depth: number) => {
+      if (depth > maxDepth) return;
+      if (isGitRepository(dir)) {
+        const entry = this.addExistingRepository(dir);
+        if (entry) found.push(entry);
+        return; // don't recurse into a repo
+      }
+      let entries: string[];
+      try {
+        entries = fs.readdirSync(dir);
+      } catch {
+        return;
+      }
+      for (const name of entries) {
+        if (name.startsWith('.') || name === 'node_modules') continue;
+        const full = path.join(dir, name);
+        try {
+          if (fs.statSync(full).isDirectory()) visit(full, depth + 1);
+        } catch {
+          // ignore
+        }
+      }
+    };
+    visit(rootPath, 0);
+    return found;
+  }
 
   getGitService(): GitService | null {
     return this.gitService;
@@ -49,17 +142,15 @@ export class RepoManager {
     this.currentPath = repoPath;
     this.gitService = new GitService(git);
 
-    // Update window title
-    const win = BrowserWindow.getAllWindows()[0];
-    if (win) {
-      win.setTitle(`GitArbor — ${repoPath}`);
+    // Update window titles + notify every renderer so both the main window
+    // and the repository browser can react.
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('repo:changed', repoPath);
     }
-
-    // Notify renderer to reload
-    const focusedWin = BrowserWindow.getFocusedWindow();
-    if (focusedWin) {
-      focusedWin.webContents.send('repo:changed', repoPath);
-    }
+    const title = `GitArbor — ${repoPath}`;
+    BrowserWindow.getAllWindows()
+      .filter((w) => w.getTitle().startsWith('GitArbor'))
+      .forEach((w) => w.setTitle(title));
 
     // Rebuild menu with updated recents
     this.buildMenu();
@@ -194,6 +285,21 @@ export class RepoManager {
           { role: 'zoomOut' as const },
           { type: 'separator' as const },
           { role: 'togglefullscreen' as const },
+        ],
+      },
+      {
+        label: 'Window',
+        submenu: [
+          {
+            label: 'Show Repository Browser',
+            accelerator: 'CmdOrCtrl+Shift+O',
+            click: () => this.windowControls?.showRepoBrowser(),
+          },
+          {
+            label: 'Show Main Window',
+            enabled: this.windowControls?.hasMainWindow() ?? false,
+            click: () => this.windowControls?.focusMainWindow(),
+          },
         ],
       },
     ];
