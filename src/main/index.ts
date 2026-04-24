@@ -49,6 +49,17 @@ function createMainWindow(): BrowserWindow {
     );
   }
 
+  // The renderer's <title> would otherwise win (Electron auto-syncs
+  // document.title). When a repo is open, keep the window title pinned
+  // to its basename instead.
+  win.on('page-title-updated', (e) => {
+    const current = repoManager?.getCurrentPath();
+    if (current) {
+      e.preventDefault();
+      win.setTitle(path.basename(current));
+    }
+  });
+
   if (process.env.NODE_ENV !== 'test') {
     win.on('focus', () => {
       win.webContents.send(IPC.REPO_CHANGED, repoManager?.getCurrentPath());

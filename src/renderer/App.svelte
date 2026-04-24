@@ -218,11 +218,19 @@
       if (page.length < PAGE_SIZE) hasMore = false;
       if (page.length > 0) {
         if (skip === 0) {
-          // First page — reset
+          // First page — reset commits, but keep the current selection if
+          // it's still visible. Only fall back to the first commit if the
+          // existing selection is gone (or never set beyond mocks).
           commits = [];
           graphRows = [];
           graphState = createGraphState();
-          selectedCommit = page[0].hashShort;
+          const keepSelection =
+            isWorkingChangesSelected ||
+            (selectedCommit !== null &&
+              page.some((c) => c.hashShort === selectedCommit));
+          if (!keepSelection) {
+            selectedCommit = page[0].hashShort;
+          }
         }
         appendCommitsAndGraph(page);
       }
@@ -262,7 +270,9 @@
     loadCommits(0);
   }
 
-  async function loadAllData() {
+  async function loadAllData(opts?: { autoSelect?: boolean }) {
+    const autoSelect = opts?.autoSelect ?? true;
+
     // Sidebar
     try {
       const [branches, remotes, tags, stashes] = await Promise.all([
@@ -290,12 +300,18 @@
     hasMore = true;
     await loadCommits(0);
 
-    // Auto-select priority: saved resume hash > working changes > first commit (default)
+    if (!autoSelect) return;
+
+    // Auto-select priority: working changes > saved resume hash > first commit.
+    // If the user has uncommitted work, that's almost always what they want to
+    // look at first when they open the app.
+    if (workingStatus?.hasChanges) {
+      await handleSelectCommit('');
+      return;
+    }
     const resumeHash = settingsStore.settings.resume.lastSelectedHash;
     if (resumeHash && commits.some((c) => c.hashShort === resumeHash)) {
       await handleSelectCommit(resumeHash);
-    } else if (workingStatus?.hasChanges) {
-      await handleSelectCommit('');
     }
   }
 
@@ -319,16 +335,32 @@
     if (savedView) activeView = savedView;
   }
 
+  // Tracks which repo the renderer currently believes is open. REPO_CHANGED
+  // fires both on actual repo switches (need full re-hydrate + auto-select) and
+  // on plain refocus (same repo — preserve selection).
+  let currentRepoPath: string | null = null;
+
   onMount(async () => {
     await hydrateSettings();
+    currentRepoPath = await window.electronAPI.repo.getCurrentPath();
     await loadAllData();
 
-    // Listen for repo changes from system menu — re-hydrate, then reload
-    window.electronAPI.repo.onRepoChanged(async () => {
-      await settingsStore.hydrate();
-      const savedView = settingsStore.settings.resume.lastActiveView;
-      if (savedView) activeView = savedView;
-      await loadAllData();
+    window.electronAPI.repo.onRepoChanged(async (newPath) => {
+      const isRepoSwitch = newPath !== currentRepoPath;
+      currentRepoPath = newPath;
+
+      if (isRepoSwitch) {
+        // Different repo — hydrate per-repo settings and run auto-select.
+        await settingsStore.hydrate();
+        const savedView = settingsStore.settings.resume.lastActiveView;
+        if (savedView) activeView = savedView;
+        await loadAllData();
+      } else {
+        // Same repo (refocus or silent refresh) — refresh data but keep
+        // whatever the user has currently selected. Do NOT hydrate settings:
+        // a debounced pending write could lose the freshest lastSelectedHash.
+        await loadAllData({ autoSelect: false });
+      }
     });
   });
 

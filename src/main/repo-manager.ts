@@ -147,9 +147,9 @@ export class RepoManager {
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send('repo:changed', repoPath);
     }
-    const title = `GitArbor — ${repoPath}`;
+    const title = path.basename(repoPath);
     BrowserWindow.getAllWindows()
-      .filter((w) => w.getTitle().startsWith('GitArbor'))
+      .filter((w) => w.getTitle() !== 'Repository Browser')
       .forEach((w) => w.setTitle(title));
 
     // Rebuild menu with updated recents
