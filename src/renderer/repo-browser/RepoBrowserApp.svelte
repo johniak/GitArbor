@@ -15,6 +15,7 @@
   let cloneDialogOpen = $state(false);
   let busy = $state<string | null>(null);
   let errorMsg = $state<string | null>(null);
+  let projectFolder = $state('');
 
   async function refresh() {
     loading = true;
@@ -25,8 +26,18 @@
     }
   }
 
+  async function loadProjectFolder() {
+    try {
+      const s = await window.electronAPI.appSettings.get();
+      projectFolder = s.general.projectFolder;
+    } catch {
+      projectFolder = '';
+    }
+  }
+
   onMount(() => {
     void refresh();
+    void loadProjectFolder();
   });
 
   let filteredRepos = $derived(
@@ -69,6 +80,7 @@
     newMenuOpen = false;
     const dir = await window.electronAPI.repo.pickDirectory({
       title: 'Add Existing Local Repository',
+      defaultPath: projectFolder || undefined,
     });
     if (!dir) return;
     const entry = await window.electronAPI.repo.addExisting(dir);
@@ -83,6 +95,7 @@
     newMenuOpen = false;
     const dir = await window.electronAPI.repo.pickDirectory({
       title: 'Create Local Repository In…',
+      defaultPath: projectFolder || undefined,
     });
     if (!dir) return;
     busy = `Initialising ${dir}...`;
@@ -102,6 +115,7 @@
     newMenuOpen = false;
     const dir = await window.electronAPI.repo.pickDirectory({
       title: 'Scan Directory For Repositories',
+      defaultPath: projectFolder || undefined,
     });
     if (!dir) return;
     busy = `Scanning ${dir}...`;
@@ -189,6 +203,7 @@
 
 {#if cloneDialogOpen}
   <CloneDialog
+    defaultDestPath={projectFolder}
     onConfirm={handleCloneConfirm}
     onCancel={() => (cloneDialogOpen = false)}
   />

@@ -1,13 +1,14 @@
 <script lang="ts">
   type Props = {
+    defaultDestPath?: string;
     onConfirm: (args: { url: string; destPath: string; name: string }) => void;
     onCancel: () => void;
   };
 
-  let { onConfirm, onCancel }: Props = $props();
+  let { defaultDestPath = '', onConfirm, onCancel }: Props = $props();
 
   let url = $state('');
-  let destPath = $state('');
+  let destPath = $state(defaultDestPath);
   let name = $state('');
   let advancedOpen = $state(false);
 
@@ -36,6 +37,7 @@
   async function pickDest() {
     const dir = await window.electronAPI.repo.pickDirectory({
       title: 'Destination Folder',
+      defaultPath: destPath || defaultDestPath || undefined,
     });
     if (dir) destPath = dir;
   }

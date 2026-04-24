@@ -28,6 +28,7 @@ export interface WindowControls {
   showRepoBrowser: () => void;
   focusMainWindow: () => void;
   hasMainWindow: () => boolean;
+  showSettings: () => void;
 }
 
 export class RepoManager {
@@ -254,11 +255,30 @@ export class RepoManager {
               submenu: [
                 { role: 'about' as const },
                 { type: 'separator' as const },
+                {
+                  label: 'Settings…',
+                  accelerator: 'Cmd+,',
+                  click: () => this.windowControls?.showSettings(),
+                },
+                { type: 'separator' as const },
                 { role: 'quit' as const },
               ],
             },
           ]
-        : []),
+        : [
+            {
+              label: 'File',
+              submenu: [
+                {
+                  label: 'Settings…',
+                  accelerator: 'Ctrl+,',
+                  click: () => this.windowControls?.showSettings(),
+                },
+                { type: 'separator' as const },
+                { role: 'quit' as const },
+              ],
+            },
+          ]),
       {
         label: 'Repositories',
         submenu: repoMenuItems,

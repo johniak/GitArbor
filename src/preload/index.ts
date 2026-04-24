@@ -5,6 +5,7 @@ import type {
   ElectronAPI,
   GetCommitsRequest,
   RepoSettings,
+  AppSettings,
 } from '../shared/ipc';
 
 const api: ElectronAPI = {
@@ -156,6 +157,12 @@ const api: ElectronAPI = {
     get: () => ipcRenderer.invoke(IPC.SETTINGS_GET),
     update: (patch: DeepPartial<RepoSettings>) =>
       ipcRenderer.invoke(IPC.SETTINGS_UPDATE, patch),
+  },
+  appSettings: {
+    get: () => ipcRenderer.invoke(IPC.APP_SETTINGS_GET),
+    update: (patch: DeepPartial<AppSettings>) =>
+      ipcRenderer.invoke(IPC.APP_SETTINGS_UPDATE, patch),
+    showWindow: () => ipcRenderer.invoke(IPC.WINDOW_SHOW_SETTINGS),
   },
   platform: process.platform,
 };

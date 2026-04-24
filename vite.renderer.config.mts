@@ -11,6 +11,7 @@ export default defineConfig({
       input: {
         index: path.resolve(__dirname, 'index.html'),
         'repo-browser': path.resolve(__dirname, 'repo-browser.html'),
+        settings: path.resolve(__dirname, 'settings.html'),
       },
     },
   },

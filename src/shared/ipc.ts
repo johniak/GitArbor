@@ -9,9 +9,12 @@ import type {
   WorkingStatus,
 } from '../renderer/types';
 import type { DeepPartial, RepoSettings } from './repo-settings-types';
+import type { AppSettings } from './app-settings-types';
 
 export type { DeepPartial, RepoSettings } from './repo-settings-types';
 export { DEFAULT_REPO_SETTINGS } from './repo-settings-types';
+export type { AppSettings } from './app-settings-types';
+export { DEFAULT_APP_SETTINGS } from './app-settings-types';
 
 export interface GetCommitsRequest {
   maxCount?: number;
@@ -81,6 +84,9 @@ export const IPC = {
   WINDOW_SHOW_BROWSER: 'window:show-browser',
   SETTINGS_GET: 'settings:get',
   SETTINGS_UPDATE: 'settings:update',
+  APP_SETTINGS_GET: 'app-settings:get',
+  APP_SETTINGS_UPDATE: 'app-settings:update',
+  WINDOW_SHOW_SETTINGS: 'window:show-settings',
 } as const;
 
 /** Request/response types per IPC channel */
@@ -215,10 +221,17 @@ export interface SettingsAPI {
   update(patch: DeepPartial<RepoSettings>): Promise<RepoSettings>;
 }
 
+export interface AppSettingsAPI {
+  get(): Promise<AppSettings>;
+  update(patch: DeepPartial<AppSettings>): Promise<AppSettings>;
+  showWindow(): Promise<void>;
+}
+
 export interface ElectronAPI {
   git: GitAPI;
   repo: RepoAPI;
   settings: SettingsAPI;
+  appSettings: AppSettingsAPI;
   platform: string;
 }
 

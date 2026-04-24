@@ -417,8 +417,20 @@ export class GitService {
     message: string,
     amend = false,
     noVerify = false,
+    author?: { name: string; email: string },
   ): Promise<void> {
-    const args = ['commit', '-m', message];
+    const args: string[] = [];
+    if (author && author.name && author.email) {
+      // -c flags go BEFORE the subcommand so they override user.name/email
+      // for this invocation only, without writing to any git config file.
+      args.push(
+        '-c',
+        `user.name=${author.name}`,
+        '-c',
+        `user.email=${author.email}`,
+      );
+    }
+    args.push('commit', '-m', message);
     if (amend) args.push('--amend');
     if (noVerify) args.push('--no-verify');
     await this.git.raw(args);

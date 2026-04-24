@@ -11,8 +11,14 @@ import {
   loadRepoSettings,
   updateRepoSettings,
 } from './repo-settings';
+import {
+  configureAppSettings,
+  flushAppSettings,
+  loadAppSettings,
+  updateAppSettings,
+} from './app-settings';
 import { IPC } from '../shared/ipc';
-import type { DeepPartial, RepoSettings } from '../shared/ipc';
+import type { DeepPartial, RepoSettings, AppSettings } from '../shared/ipc';
 import { DEFAULT_REPO_SETTINGS } from '../shared/ipc';
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
@@ -24,6 +30,7 @@ const defaultGit = new GitService(simpleGit(repoPath));
 let repoManager: RepoManager | null = null;
 let mainWindow: BrowserWindow | null = null;
 let repoBrowserWindow: BrowserWindow | null = null;
+let settingsWindow: BrowserWindow | null = null;
 
 function getIconPath(): string {
   return app.isPackaged
@@ -128,6 +135,57 @@ function ensureMainWindow(): BrowserWindow {
   return mainWindow;
 }
 
+function createSettingsWindow(): BrowserWindow {
+  const win = new BrowserWindow({
+    width: 760,
+    height: 560,
+    icon: getIconPath(),
+    title: 'Settings',
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+    },
+  });
+
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    const base = MAIN_WINDOW_VITE_DEV_SERVER_URL.endsWith('/')
+      ? MAIN_WINDOW_VITE_DEV_SERVER_URL
+      : `${MAIN_WINDOW_VITE_DEV_SERVER_URL}/`;
+    win.loadURL(`${base}settings.html`);
+  } else {
+    win.loadFile(
+      path.join(
+        __dirname,
+        `../renderer/${MAIN_WINDOW_VITE_NAME}/settings.html`,
+      ),
+    );
+  }
+
+  win.on('page-title-updated', (e) => {
+    e.preventDefault();
+    win.setTitle('Settings');
+  });
+
+  win.on('closed', () => {
+    if (settingsWindow === win) settingsWindow = null;
+  });
+
+  return win;
+}
+
+function showSettingsWindow(): BrowserWindow {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    if (settingsWindow.isMinimized()) settingsWindow.restore();
+    settingsWindow.show();
+    settingsWindow.focus();
+    return settingsWindow;
+  }
+  settingsWindow = createSettingsWindow();
+  return settingsWindow;
+}
+
 // Git IPC handlers — delegate to repo manager's git service or default
 function getGitService(): GitService {
   return repoManager?.getGitService() ?? defaultGit;
@@ -176,7 +234,16 @@ ipcMain.handle(
       amend,
       noVerify,
     }: { message: string; amend?: boolean; noVerify?: boolean },
-  ) => getGitService().commit(message, amend, noVerify),
+  ) => {
+    const s = loadAppSettings();
+    const author =
+      s.general.overrideAuthorOnCommit &&
+      s.general.authorName &&
+      s.general.authorEmail
+        ? { name: s.general.authorName, email: s.general.authorEmail }
+        : undefined;
+    return getGitService().commit(message, amend, noVerify, author);
+  },
 );
 ipcMain.handle(IPC.GIT_PULL, () => getGitService().pull());
 ipcMain.handle(IPC.GIT_PUSH, () => getGitService().push());
@@ -591,14 +658,34 @@ ipcMain.handle(
   },
 );
 
+ipcMain.handle(IPC.APP_SETTINGS_GET, (): AppSettings => loadAppSettings());
+
+ipcMain.handle(
+  IPC.APP_SETTINGS_UPDATE,
+  (_event, patch: DeepPartial<AppSettings>): AppSettings => {
+    const next = updateAppSettings(patch);
+    // Broadcast so any already-open window (main, repo browser) sees new values
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('app-settings:changed', next);
+    }
+    return next;
+  },
+);
+
+ipcMain.handle(IPC.WINDOW_SHOW_SETTINGS, () => {
+  showSettingsWindow();
+});
+
 app.on('before-quit', () => {
   flushRepoSettings();
+  flushAppSettings();
 });
 
 app.on('ready', async () => {
   try {
     const userData = app.getPath('userData');
     configureRepoSettings(userData);
+    configureAppSettings(userData);
     const dbPath = path.join(userData, 'repositories.db');
     const db = await createDatabase(dbPath);
     repoManager = new RepoManager(db);
@@ -606,6 +693,7 @@ app.on('ready', async () => {
       showRepoBrowser,
       focusMainWindow: () => mainWindow?.show(),
       hasMainWindow: () => mainWindow !== null && !mainWindow.isDestroyed(),
+      showSettings: () => showSettingsWindow(),
     });
 
     // E2E + CLI usage: if REPO_PATH is explicitly provided, skip the
