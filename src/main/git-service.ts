@@ -163,11 +163,15 @@ export class GitService {
   async getCommitFiles(hash: string): Promise<ChangedFile[]> {
     // diff-tree --no-commit-id -r --name-status: shows changed files with status
     // --root handles root commit (no parent)
+    // -m --first-parent makes merge commits list files too, diffed against the
+    // first parent (matches what `getFileDiff` does via `hash^` = `hash^1`).
     const raw = await this.git.raw([
       'diff-tree',
       '--no-commit-id',
       '-r',
       '--name-status',
+      '-m',
+      '--first-parent',
       '--root',
       hash,
     ]);
