@@ -10,16 +10,16 @@ import type {
  * Lane colors — distinct, visible on dark background. Cycles when exhausted.
  */
 const LANE_COLORS = [
-  '#569cd6', // blue
-  '#6a9955', // green
-  '#dcdcaa', // yellow
-  '#ce9178', // orange
-  '#c586c0', // purple
-  '#9cdcfe', // light blue
-  '#4ec9b0', // teal
-  '#d16969', // red
-  '#b5cea8', // lime
-  '#d7ba7d', // gold
+  '#4a9eeb', // blue
+  '#f97f5e', // coral / orange
+  '#4fc98d', // emerald green
+  '#f5c23e', // amber / gold
+  '#5ec8c2', // teal
+  '#a08ad3', // violet / purple
+  '#3b82f6', // deep blue
+  '#e879a9', // pink
+  '#c4e860', // lime
+  '#38bdf8', // sky blue
 ];
 
 function laneColor(index: number): string {
