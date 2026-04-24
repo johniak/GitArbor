@@ -9,37 +9,60 @@
 
   let { settings, onChange }: Props = $props();
 
-  let authorName = $state(settings.general.authorName);
-  let authorEmail = $state(settings.general.authorEmail);
+  // App-level values the user has typed (persist when override is on).
+  let appName = $state(settings.general.authorName);
+  let appEmail = $state(settings.general.authorEmail);
+
+  // Read-only snapshot of what `git config --global user.name/email` says.
+  // Shown (disabled) when override is off.
+  let globalName = $state('');
+  let globalEmail = $state('');
+
   let projectFolder = $state(settings.general.projectFolder);
   let overrideAuthorOnCommit = $state(settings.general.overrideAuthorOnCommit);
 
-  // Pre-fill name/email from git config --global on first mount if app has
-  // never stored any values (empty strings mean "never customised").
+  // What the inputs actually show: app values while override is on, otherwise
+  // the read-only global values.
+  let displayName = $derived(overrideAuthorOnCommit ? appName : globalName);
+  let displayEmail = $derived(overrideAuthorOnCommit ? appEmail : globalEmail);
+
   onMount(async () => {
-    if (!authorName) {
-      try {
-        const v = (await window.electronAPI.git.getConfig('user.name')) ?? '';
-        if (v && !authorName) {
-          authorName = v.trim();
-          onChange({ authorName });
-        }
-      } catch {
-        /* no user.name — leave blank */
-      }
+    try {
+      globalName = (
+        (await window.electronAPI.git.getConfig('user.name')) ?? ''
+      ).trim();
+    } catch {
+      globalName = '';
     }
-    if (!authorEmail) {
-      try {
-        const v = (await window.electronAPI.git.getConfig('user.email')) ?? '';
-        if (v && !authorEmail) {
-          authorEmail = v.trim();
-          onChange({ authorEmail });
-        }
-      } catch {
-        /* no user.email — leave blank */
-      }
+    try {
+      globalEmail = (
+        (await window.electronAPI.git.getConfig('user.email')) ?? ''
+      ).trim();
+    } catch {
+      globalEmail = '';
     }
   });
+
+  function handleOverrideToggle() {
+    // When turning the override on for the first time, seed the app values
+    // with whatever global currently has so the user has a starting point.
+    if (overrideAuthorOnCommit) {
+      const patch: Partial<AppSettings['general']> = {
+        overrideAuthorOnCommit,
+      };
+      if (!appName && globalName) {
+        appName = globalName;
+        patch.authorName = globalName;
+      }
+      if (!appEmail && globalEmail) {
+        appEmail = globalEmail;
+        patch.authorEmail = globalEmail;
+      }
+      onChange(patch);
+    } else {
+      onChange({ overrideAuthorOnCommit });
+    }
+  }
 
   async function browseProjectFolder() {
     const dir = await window.electronAPI.repo.pickDirectory({
@@ -57,7 +80,7 @@
     <input
       type="checkbox"
       bind:checked={overrideAuthorOnCommit}
-      onchange={() => onChange({ overrideAuthorOnCommit })}
+      onchange={handleOverrideToggle}
       data-testid="settings-override-checkbox"
     />
     <span>
@@ -74,8 +97,12 @@
       <input
         id="settings-name"
         type="text"
-        bind:value={authorName}
-        onblur={() => onChange({ authorName })}
+        value={displayName}
+        disabled={!overrideAuthorOnCommit}
+        oninput={(e) => {
+          appName = (e.currentTarget as HTMLInputElement).value;
+        }}
+        onblur={() => onChange({ authorName: appName })}
         data-testid="settings-name"
       />
     </div>
@@ -85,8 +112,12 @@
       <input
         id="settings-email"
         type="text"
-        bind:value={authorEmail}
-        onblur={() => onChange({ authorEmail })}
+        value={displayEmail}
+        disabled={!overrideAuthorOnCommit}
+        oninput={(e) => {
+          appEmail = (e.currentTarget as HTMLInputElement).value;
+        }}
+        onblur={() => onChange({ authorEmail: appEmail })}
         data-testid="settings-email"
       />
     </div>
@@ -187,6 +218,12 @@
 
   .field input[type='text']:focus {
     border-color: var(--color-text-accent);
+  }
+
+  .field input[type='text']:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    color: var(--color-text-secondary);
   }
 
   .dir-row {
