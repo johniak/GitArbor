@@ -31,7 +31,7 @@ See [FEATURES.md](./FEATURES.md) for the full feature matrix and roadmap.
 
 ## Screenshots
 
-_Screenshots coming soon._
+![GitArbor](./screenshot.jpg)
 
 ## Installation
 
