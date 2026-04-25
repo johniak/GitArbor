@@ -406,6 +406,19 @@
         case 'stash':
           showStashDialog = true;
           return;
+        case 'show-in-folder':
+          await window.electronAPI.git.openRepoFolder();
+          return;
+        case 'terminal': {
+          const res = await window.electronAPI.git.openTerminal();
+          if (res?.error) {
+            showError('Could not open terminal', res.error);
+          }
+          return;
+        }
+        case 'settings':
+          await window.electronAPI.appSettings.showWindow();
+          return;
         default:
           return;
       }
@@ -1205,7 +1218,6 @@
               {workingStatus}
               isWorkingChanges={isWorkingChangesSelected}
               selectedPath={selectedFile}
-              selectedStaged={selectedFileStaged}
               selectedCommit={selectedCommitData}
               {commitBody}
               onSelectFile={handleSelectFile}
@@ -1376,7 +1388,6 @@
 {#if resetDialog}
   <ResetCommitDialog
     branch={resetDialog.branch}
-    hash={resetDialog.hash}
     shortHash={resetDialog.shortHash}
     subject={resetDialog.subject}
     onConfirm={(mode) =>
@@ -1407,7 +1418,6 @@
 
 {#if pushRevisionDialog}
   <PushRevisionDialog
-    hash={pushRevisionDialog.hash}
     shortHash={pushRevisionDialog.shortHash}
     remotes={sidebarData.remotes}
     defaultBranch={sidebarData.branches.find((b) => b.current)?.name ?? ''}

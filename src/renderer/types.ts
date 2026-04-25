@@ -167,25 +167,6 @@ export interface WorkingStatus {
   hasChanges: boolean;
 }
 
-// ── Repository State ─────────────────────────────────────────
-
-export interface RepoStatus {
-  /** Current branch name or null if detached HEAD */
-  currentBranch: string | null;
-  /** Whether HEAD is detached */
-  detached: boolean;
-  /** Tracking branch name */
-  tracking: string | null;
-  /** Commits ahead of tracking */
-  ahead: number;
-  /** Commits behind tracking */
-  behind: number;
-  /** Working directory + staging area files */
-  files: ChangedFile[];
-  /** True when working directory is clean */
-  clean: boolean;
-}
-
 // ── Toolbar Actions ──────────────────────────────────────────
 
 export type ToolbarAction =
@@ -196,6 +177,7 @@ export type ToolbarAction =
   | 'branch'
   | 'merge'
   | 'stash'
-  | 'remote'
+  | 'show-in-folder'
   | 'terminal'
+  | 'remote'
   | 'settings';

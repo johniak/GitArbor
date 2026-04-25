@@ -1,10 +1,4 @@
-import type {
-  SidebarData,
-  Commit,
-  ChangedFile,
-  FileDiff,
-  RepoStatus,
-} from './types';
+import type { SidebarData, Commit, ChangedFile, FileDiff } from './types';
 
 export const mockSidebar: SidebarData = {
   branches: [
@@ -308,14 +302,4 @@ export const mockDiff: FileDiff = {
       ],
     },
   ],
-};
-
-export const mockRepoStatus: RepoStatus = {
-  currentBranch: 'main',
-  detached: false,
-  tracking: 'origin/main',
-  ahead: 0,
-  behind: 0,
-  files: mockFiles,
-  clean: false,
 };

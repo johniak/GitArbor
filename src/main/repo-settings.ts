@@ -3,11 +3,15 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {
   DEFAULT_REPO_SETTINGS,
-  type DeepPartial,
   type RepoSettings,
 } from '../shared/repo-settings-types';
+import {
+  deepMerge,
+  isPlainObject,
+  SETTINGS_DEBOUNCE_MS,
+  type DeepPartial,
+} from '../shared/deep-merge';
 
-const DEBOUNCE_MS = 300;
 const SETTINGS_DIR = 'repo-settings';
 
 let userDataDir: string | null = null;
@@ -34,27 +38,6 @@ export function settingsFilePath(repoPath: string): string {
     .digest('hex')
     .slice(0, 16);
   return path.join(requireDir(), SETTINGS_DIR, `${hash}.json`);
-}
-
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
-function deepMerge<T>(base: T, patch: DeepPartial<T>): T {
-  if (!isPlainObject(base) || !isPlainObject(patch)) {
-    return (patch ?? base) as T;
-  }
-  const out: Record<string, unknown> = { ...base };
-  for (const [key, value] of Object.entries(patch)) {
-    if (value === undefined) continue;
-    const current = (base as Record<string, unknown>)[key];
-    if (isPlainObject(value) && isPlainObject(current)) {
-      out[key] = deepMerge(current, value as DeepPartial<typeof current>);
-    } else {
-      out[key] = value;
-    }
-  }
-  return out as T;
 }
 
 function readFromDisk(repoPath: string): RepoSettings {
@@ -112,7 +95,7 @@ export function updateRepoSettings(
   if (existing) clearTimeout(existing);
   pendingTimers.set(
     repoPath,
-    setTimeout(() => writeToDisk(repoPath), DEBOUNCE_MS),
+    setTimeout(() => writeToDisk(repoPath), SETTINGS_DEBOUNCE_MS),
   );
   return merged;
 }

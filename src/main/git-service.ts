@@ -504,13 +504,12 @@ export class GitService {
 
   async merge(
     branch: string,
-  ): Promise<{ conflicts: string[]; summary: string }> {
+  ): Promise<{ conflicts: string[]; summary: string; error?: string }> {
     try {
       const result = await this.git.merge([branch]);
       const summary = result.result ?? 'Merge completed';
       return { conflicts: [], summary };
     } catch (e) {
-      console.error('[git-service] merge error:', e);
       try {
         const status = await this.git.status();
         if (status.conflicted.length > 0) {
@@ -520,13 +519,17 @@ export class GitService {
         console.error('[git-service] status after merge error:', statusErr);
       }
       const msg = e instanceof Error ? e.message : String(e);
-      throw new Error(`Merge ${branch} failed: ${msg}`, { cause: e });
+      return {
+        conflicts: [],
+        summary: '',
+        error: `Merge ${branch} failed: ${msg}`,
+      };
     }
   }
 
   async rebase(
     branch: string,
-  ): Promise<{ conflicts: string[]; summary: string }> {
+  ): Promise<{ conflicts: string[]; summary: string; error?: string }> {
     try {
       const output = await this.git.raw(['rebase', branch]);
       const summary = output.trim() || 'Rebase completed';
@@ -537,7 +540,11 @@ export class GitService {
         return { conflicts: status.conflicted, summary: 'Rebase conflicts' };
       }
       const msg = e instanceof Error ? e.message : String(e);
-      throw new Error(`Rebase onto ${branch} failed: ${msg}`, { cause: e });
+      return {
+        conflicts: [],
+        summary: '',
+        error: `Rebase onto ${branch} failed: ${msg}`,
+      };
     }
   }
 
@@ -554,7 +561,7 @@ export class GitService {
 
   async revertCommit(
     hash: string,
-  ): Promise<{ conflicts: string[]; summary: string }> {
+  ): Promise<{ conflicts: string[]; summary: string; error?: string }> {
     try {
       await this.git.raw(['revert', '--no-edit', hash]);
       return { conflicts: [], summary: 'Revert completed' };
@@ -564,13 +571,17 @@ export class GitService {
         return { conflicts: status.conflicted, summary: 'Revert conflicts' };
       }
       const msg = e instanceof Error ? e.message : String(e);
-      throw new Error(`Revert ${hash} failed: ${msg}`, { cause: e });
+      return {
+        conflicts: [],
+        summary: '',
+        error: `Revert ${hash} failed: ${msg}`,
+      };
     }
   }
 
   async cherryPick(
     hash: string,
-  ): Promise<{ conflicts: string[]; summary: string }> {
+  ): Promise<{ conflicts: string[]; summary: string; error?: string }> {
     try {
       await this.git.raw(['cherry-pick', hash]);
       return { conflicts: [], summary: 'Cherry-pick completed' };
@@ -583,7 +594,11 @@ export class GitService {
         };
       }
       const msg = e instanceof Error ? e.message : String(e);
-      throw new Error(`Cherry-pick ${hash} failed: ${msg}`, { cause: e });
+      return {
+        conflicts: [],
+        summary: '',
+        error: `Cherry-pick ${hash} failed: ${msg}`,
+      };
     }
   }
 
@@ -595,7 +610,7 @@ export class GitService {
     await this.git.raw(['archive', `--format=${format}`, '-o', filePath, hash]);
   }
 
-  async formatPatchFromCommit(hash: string): Promise<string> {
+  async createPatchFromCommit(hash: string): Promise<string> {
     return await this.git.raw(['format-patch', '-1', hash, '--stdout']);
   }
 

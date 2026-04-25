@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import simpleGit from 'simple-git';
 import { GitService, cloneRepository, initRepository } from './git-service';
+import { openTerminal } from './open-terminal';
 import { createDatabase } from './db';
 import { RepoManager } from './repo-manager';
 import {
@@ -277,24 +278,12 @@ ipcMain.handle(
   (_event, opts?: { message?: string; keepIndex?: boolean }) =>
     getGitService().stash(opts?.message, opts?.keepIndex),
 );
-ipcMain.handle(IPC.GIT_MERGE, async (_event, branch: string) => {
-  try {
-    return await getGitService().merge(branch);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error('[main] merge error:', msg);
-    return { conflicts: [], summary: '', error: msg };
-  }
-});
-ipcMain.handle(IPC.GIT_REBASE, async (_event, branch: string) => {
-  try {
-    return await getGitService().rebase(branch);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error('[main] rebase error:', msg);
-    return { conflicts: [], summary: '', error: msg };
-  }
-});
+ipcMain.handle(IPC.GIT_MERGE, (_event, branch: string) =>
+  getGitService().merge(branch),
+);
+ipcMain.handle(IPC.GIT_REBASE, (_event, branch: string) =>
+  getGitService().rebase(branch),
+);
 ipcMain.handle(IPC.GIT_GET_CONFIG, (_event, key: string) =>
   getGitService().getConfig(key),
 );
@@ -370,6 +359,19 @@ ipcMain.handle(IPC.SHELL_OPEN_FILE, async (_event, filePath: string) => {
   await shell.openPath(path.join(root, filePath));
 });
 
+ipcMain.handle(IPC.SHELL_OPEN_REPO_FOLDER, async () => {
+  const root = await getGitService().getRepoRoot();
+  await shell.openPath(root);
+});
+
+ipcMain.handle(
+  IPC.SHELL_OPEN_TERMINAL,
+  async (): Promise<{ error?: string }> => {
+    const root = await getGitService().getRepoRoot();
+    return openTerminal(root);
+  },
+);
+
 /**
  * Wrap dialog.showSaveDialog so e2e tests can bypass the native picker by
  * setting E2E_SAVE_PATH to a fixed file path. In production the real Electron
@@ -423,27 +425,15 @@ ipcMain.handle(
 );
 
 ipcMain.handle(IPC.GIT_REVERT, async (_event, hash: string) => {
-  try {
-    const res = await getGitService().revertCommit(hash);
-    notifyRepoChanged();
-    return res;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error('[main] revert error:', msg);
-    return { conflicts: [], summary: '', error: msg };
-  }
+  const res = await getGitService().revertCommit(hash);
+  notifyRepoChanged();
+  return res;
 });
 
 ipcMain.handle(IPC.GIT_CHERRY_PICK, async (_event, hash: string) => {
-  try {
-    const res = await getGitService().cherryPick(hash);
-    notifyRepoChanged();
-    return res;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error('[main] cherry-pick error:', msg);
-    return { conflicts: [], summary: '', error: msg };
-  }
+  const res = await getGitService().cherryPick(hash);
+  notifyRepoChanged();
+  return res;
 });
 
 ipcMain.handle(
@@ -475,7 +465,7 @@ ipcMain.handle(
     _event,
     { hash, defaultName }: { hash: string; defaultName: string },
   ) => {
-    const raw = await getGitService().formatPatchFromCommit(hash);
+    const raw = await getGitService().createPatchFromCommit(hash);
     if (!raw.trim()) return { canceled: true };
 
     const win = BrowserWindow.getFocusedWindow();
@@ -635,10 +625,6 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle(IPC.WINDOW_SHOW_BROWSER, () => {
-  showRepoBrowser();
-});
-
 // Settings IPC handlers
 ipcMain.handle(IPC.SETTINGS_GET, (): RepoSettings => {
   const current = repoManager?.getCurrentPath();
@@ -664,13 +650,19 @@ ipcMain.handle(
   IPC.APP_SETTINGS_UPDATE,
   (_event, patch: DeepPartial<AppSettings>): AppSettings => {
     const next = updateAppSettings(patch);
-    // Broadcast so any already-open window (main, repo browser) sees new values
+    // Broadcast so already-open windows (e.g. Repository Browser reading
+    // general.projectFolder) can pick up the change without a restart.
     for (const win of BrowserWindow.getAllWindows()) {
-      win.webContents.send('app-settings:changed', next);
+      if (win.isDestroyed()) continue;
+      win.webContents.send(IPC.APP_SETTINGS_CHANGED, next);
     }
     return next;
   },
 );
+
+ipcMain.handle(IPC.WINDOW_SHOW_BROWSER, () => {
+  showRepoBrowser();
+});
 
 ipcMain.handle(IPC.WINDOW_SHOW_SETTINGS, () => {
   showSettingsWindow();

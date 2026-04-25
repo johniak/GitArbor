@@ -5,7 +5,6 @@
     FileText,
     SlidersHorizontal,
     GitBranch,
-    Zap,
     SlidersVertical,
     Download,
     Cog,
@@ -49,8 +48,6 @@
     { id: 'update', label: 'Update', icon: Download, enabled: false },
     { id: 'advanced', label: 'Advanced', icon: Cog, enabled: false },
   ];
-
-  void Zap; // keep import stable if palette shifts
 </script>
 
 <div class="tabs" role="tablist">

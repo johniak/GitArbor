@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import type { RepoListEntry } from '../../shared/ipc';
   import RepoBrowserHeader from './RepoBrowserHeader.svelte';
   import RepoRow from './RepoRow.svelte';
@@ -35,9 +35,18 @@
     }
   }
 
+  let unsubscribeAppSettings: (() => void) | null = null;
+
   onMount(() => {
     void refresh();
     void loadProjectFolder();
+    unsubscribeAppSettings = window.electronAPI.appSettings.onChanged((s) => {
+      projectFolder = s.general.projectFolder;
+    });
+  });
+
+  onDestroy(() => {
+    unsubscribeAppSettings?.();
   });
 
   let filteredRepos = $derived(

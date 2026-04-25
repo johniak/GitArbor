@@ -149,18 +149,6 @@ export function isFavouriteRepo(db: AppDatabase, repoPath: string): boolean {
   return row?.isFavourite === 1;
 }
 
-/**
- * All repos known to the browser: favourites first (alpha), then the rest
- * ordered by most-recently-opened.
- */
-export function getAllRepositories(db: AppDatabase): Repository[] {
-  return db
-    .select()
-    .from(repositories)
-    .orderBy(desc(repositories.isFavourite), desc(repositories.lastOpenedAt))
-    .all();
-}
-
 export function addRepository(
   db: AppDatabase,
   repoPath: string,

@@ -2,7 +2,6 @@
   import type { Remote } from '../types';
 
   type Props = {
-    hash: string;
     shortHash: string;
     remotes: Remote[];
     defaultBranch: string;

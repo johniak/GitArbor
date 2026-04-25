@@ -42,10 +42,36 @@ test.describe('TopToolbar', () => {
   });
 
   test('displays right-side buttons', async ({ window }) => {
-    for (const label of ['Remote', 'Terminal', 'Settings']) {
+    // "Show in Finder" on macOS, "Show in Explorer" on Windows, "Show in Files"
+    // elsewhere — the test repo runs on all three, so match any of them.
+    const showInFolderLabels = [
+      'Show in Finder',
+      'Show in Explorer',
+      'Show in Files',
+    ];
+    let foundShowInFolder = false;
+    for (const label of showInFolderLabels) {
+      if (await window.locator('.toolbar-btn', { hasText: label }).count()) {
+        foundShowInFolder = true;
+        break;
+      }
+    }
+    expect(foundShowInFolder).toBe(true);
+
+    for (const label of ['Terminal', 'Remote', 'Settings']) {
       await expect(
         window.locator('.toolbar-btn', { hasText: label }),
       ).toBeVisible();
+    }
+  });
+
+  test('Merge and Remote buttons are disabled (not yet implemented)', async ({
+    window,
+  }) => {
+    for (const label of ['Merge', 'Remote']) {
+      const btn = window.locator('.toolbar-btn', { hasText: label });
+      await expect(btn).toBeVisible();
+      await expect(btn).toBeDisabled();
     }
   });
 });

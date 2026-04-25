@@ -8,10 +8,12 @@ import type {
   FileDiff,
   WorkingStatus,
 } from '../renderer/types';
-import type { DeepPartial, RepoSettings } from './repo-settings-types';
+import type { DeepPartial } from './deep-merge';
+import type { RepoSettings } from './repo-settings-types';
 import type { AppSettings } from './app-settings-types';
 
-export type { DeepPartial, RepoSettings } from './repo-settings-types';
+export type { DeepPartial } from './deep-merge';
+export type { RepoSettings } from './repo-settings-types';
 export { DEFAULT_REPO_SETTINGS } from './repo-settings-types';
 export type { AppSettings } from './app-settings-types';
 export { DEFAULT_APP_SETTINGS } from './app-settings-types';
@@ -70,6 +72,8 @@ export const IPC = {
   GIT_UNSTAGE_LINES: 'git:unstage-lines',
   GIT_DISCARD_LINES: 'git:discard-lines',
   SHELL_OPEN_FILE: 'shell:open-file',
+  SHELL_OPEN_REPO_FOLDER: 'shell:open-repo-folder',
+  SHELL_OPEN_TERMINAL: 'shell:open-terminal',
   REPO_GET_CURRENT: 'repo:get-current',
   REPO_CHANGED: 'repo:changed',
   REPO_LOAD_LIST: 'repo:load-list',
@@ -82,11 +86,12 @@ export const IPC = {
   REPO_SET_FAVOURITE: 'repo:set-favourite',
   DIALOG_PICK_DIRECTORY: 'dialog:pick-directory',
   WINDOW_SHOW_BROWSER: 'window:show-browser',
+  WINDOW_SHOW_SETTINGS: 'window:show-settings',
   SETTINGS_GET: 'settings:get',
   SETTINGS_UPDATE: 'settings:update',
   APP_SETTINGS_GET: 'app-settings:get',
   APP_SETTINGS_UPDATE: 'app-settings:update',
-  WINDOW_SHOW_SETTINGS: 'window:show-settings',
+  APP_SETTINGS_CHANGED: 'app-settings:changed',
 } as const;
 
 /** Request/response types per IPC channel */
@@ -145,6 +150,8 @@ export interface GitAPI {
   discardFile(path: string, isUntracked: boolean): Promise<void>;
   ignoreFile(path: string): Promise<void>;
   openFile(path: string): Promise<void>;
+  openRepoFolder(): Promise<void>;
+  openTerminal(): Promise<{ error?: string }>;
   createPatch(filePath: string, staged: boolean): Promise<void>;
   resetToCommit(hash: string, mode: 'soft' | 'mixed' | 'hard'): Promise<void>;
   revertCommit(
@@ -225,6 +232,7 @@ export interface AppSettingsAPI {
   get(): Promise<AppSettings>;
   update(patch: DeepPartial<AppSettings>): Promise<AppSettings>;
   showWindow(): Promise<void>;
+  onChanged(cb: (settings: AppSettings) => void): () => void;
 }
 
 export interface ElectronAPI {

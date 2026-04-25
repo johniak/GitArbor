@@ -31,10 +31,6 @@ export interface RepoSettings {
   };
 }
 
-export type DeepPartial<T> = T extends object
-  ? { [K in keyof T]?: DeepPartial<T[K]> }
-  : T;
-
 export const DEFAULT_REPO_SETTINGS: RepoSettings = {
   schemaVersion: 1,
   path: '',

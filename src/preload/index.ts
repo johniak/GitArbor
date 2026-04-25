@@ -73,6 +73,8 @@ const api: ElectronAPI = {
       ipcRenderer.invoke(IPC.GIT_DISCARD_FILE, { path, isUntracked }),
     ignoreFile: (path: string) => ipcRenderer.invoke(IPC.GIT_IGNORE_FILE, path),
     openFile: (path: string) => ipcRenderer.invoke(IPC.SHELL_OPEN_FILE, path),
+    openRepoFolder: () => ipcRenderer.invoke(IPC.SHELL_OPEN_REPO_FOLDER),
+    openTerminal: () => ipcRenderer.invoke(IPC.SHELL_OPEN_TERMINAL),
     createPatch: (filePath: string, staged: boolean) =>
       ipcRenderer.invoke(IPC.GIT_CREATE_PATCH, { filePath, staged }),
     stageHunk: (filePath: string, hunkIndex: number) =>
@@ -163,6 +165,11 @@ const api: ElectronAPI = {
     update: (patch: DeepPartial<AppSettings>) =>
       ipcRenderer.invoke(IPC.APP_SETTINGS_UPDATE, patch),
     showWindow: () => ipcRenderer.invoke(IPC.WINDOW_SHOW_SETTINGS),
+    onChanged: (cb: (settings: AppSettings) => void) => {
+      const listener = (_: unknown, settings: AppSettings) => cb(settings);
+      ipcRenderer.on(IPC.APP_SETTINGS_CHANGED, listener);
+      return () => ipcRenderer.off(IPC.APP_SETTINGS_CHANGED, listener);
+    },
   },
   platform: process.platform,
 };

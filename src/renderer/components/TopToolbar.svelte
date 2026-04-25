@@ -7,8 +7,9 @@
     GitBranch,
     GitMerge,
     Package,
-    Globe,
+    FolderOpen,
     Terminal,
+    Globe,
     Settings,
   } from '@lucide/svelte';
   import type { Component } from 'svelte';
@@ -32,7 +33,17 @@
     icon: Component<Record<string, unknown>>;
     action: ToolbarAction;
     label: string;
+    disabled?: boolean;
   };
+
+  // Platform-specific label for "open repo folder in OS file manager".
+  const platform = window.electronAPI?.platform ?? '';
+  const showInFolderLabel =
+    platform === 'darwin'
+      ? 'Show in Finder'
+      : platform === 'win32'
+        ? 'Show in Explorer'
+        : 'Show in Files';
 
   const leftActions: ToolbarButton[] = [
     { icon: GitCommitHorizontal, action: 'commit', label: 'Commit' },
@@ -43,21 +54,31 @@
 
   const leftSecondary: ToolbarButton[] = [
     { icon: GitBranch, action: 'branch', label: 'Branch' },
-    { icon: GitMerge, action: 'merge', label: 'Merge' },
+    { icon: GitMerge, action: 'merge', label: 'Merge', disabled: true },
     { icon: Package, action: 'stash', label: 'Stash' },
   ];
 
   const rightActions: ToolbarButton[] = [
-    { icon: Globe, action: 'remote', label: 'Remote' },
+    { icon: FolderOpen, action: 'show-in-folder', label: showInFolderLabel },
     { icon: Terminal, action: 'terminal', label: 'Terminal' },
+    { icon: Globe, action: 'remote', label: 'Remote', disabled: true },
     { icon: Settings, action: 'settings', label: 'Settings' },
   ];
+
+  function handleClick(btn: ToolbarButton) {
+    if (btn.disabled) return;
+    onAction?.(btn.action);
+  }
 </script>
 
 <div class="toolbar">
   <div class="toolbar-group">
     {#each leftActions as btn}
-      <button class="toolbar-btn" onclick={() => onAction?.(btn.action)}>
+      <button
+        class="toolbar-btn"
+        disabled={btn.disabled}
+        onclick={() => handleClick(btn)}
+      >
         <div class="toolbar-icon">
           <btn.icon size={22} strokeWidth={1.5} color="var(--color-icon)" />
           {#if btn.action === 'commit' && uncommittedCount > 0}
@@ -77,7 +98,11 @@
     <div class="separator"></div>
 
     {#each leftSecondary as btn}
-      <button class="toolbar-btn" onclick={() => onAction?.(btn.action)}>
+      <button
+        class="toolbar-btn"
+        disabled={btn.disabled}
+        onclick={() => handleClick(btn)}
+      >
         <div class="toolbar-icon">
           <btn.icon size={22} strokeWidth={1.5} color="var(--color-icon)" />
         </div>
@@ -90,7 +115,11 @@
 
   <div class="toolbar-group">
     {#each rightActions as btn}
-      <button class="toolbar-btn" onclick={() => onAction?.(btn.action)}>
+      <button
+        class="toolbar-btn"
+        disabled={btn.disabled}
+        onclick={() => handleClick(btn)}
+      >
         <div class="toolbar-icon">
           <btn.icon size={22} strokeWidth={1.5} color="var(--color-icon)" />
         </div>
@@ -139,8 +168,13 @@
     transition: background 0.15s;
   }
 
-  .toolbar-btn:hover {
+  .toolbar-btn:hover:not(:disabled) {
     background: var(--color-bg-hover);
+  }
+
+  .toolbar-btn:disabled {
+    cursor: default;
+    opacity: 0.4;
   }
 
   .toolbar-icon {

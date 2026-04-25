@@ -3,7 +3,6 @@
 
   type Props = {
     branch: string;
-    hash: string;
     shortHash: string;
     subject: string;
     onConfirm: (mode: ResetMode) => void;
