@@ -602,6 +602,108 @@ export class GitService {
     }
   }
 
+  /**
+   * Resolve `.git/` directory (or worktree git-dir). Path is relative to cwd
+   * for linked worktrees; we anchor it to repo root via getRepoRoot to get an
+   * absolute path safe for fs operations.
+   */
+  private async getGitDir(): Promise<string> {
+    const raw = (await this.git.revparse(['--git-dir'])).trim();
+    if (path.isAbsolute(raw)) return raw;
+    const root = await this.getRepoRoot();
+    return path.join(root, raw);
+  }
+
+  async getOperationInProgress(): Promise<{
+    kind: 'merge' | 'rebase' | 'cherry-pick' | 'revert';
+  } | null> {
+    const gitDir = await this.getGitDir();
+    if (fs.existsSync(path.join(gitDir, 'MERGE_HEAD')))
+      return { kind: 'merge' };
+    if (
+      fs.existsSync(path.join(gitDir, 'rebase-apply')) ||
+      fs.existsSync(path.join(gitDir, 'rebase-merge'))
+    ) {
+      return { kind: 'rebase' };
+    }
+    if (fs.existsSync(path.join(gitDir, 'CHERRY_PICK_HEAD'))) {
+      return { kind: 'cherry-pick' };
+    }
+    if (fs.existsSync(path.join(gitDir, 'REVERT_HEAD'))) {
+      return { kind: 'revert' };
+    }
+    return null;
+  }
+
+  /**
+   * Resolve a conflicted file using one of two strategies, then stage it.
+   *
+   * Semantics from the user's perspective ("Mine" = my branch's version,
+   * "Theirs" = the incoming version) require flag remapping during rebase
+   * because rebase replays the user's commits onto the upstream — so
+   * `--ours` is actually the upstream and `--theirs` is the user's commit.
+   */
+  async resolveConflict(
+    filePath: string,
+    strategy: 'mine' | 'theirs',
+  ): Promise<{ error?: string }> {
+    try {
+      const op = await this.getOperationInProgress();
+      const inverted = op?.kind === 'rebase';
+      const flag = (strategy === 'mine') === !inverted ? '--ours' : '--theirs';
+      await this.git.raw(['checkout', flag, '--', filePath]);
+      await this.git.raw(['add', '--', filePath]);
+      return {};
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { error: `Resolve ${filePath} failed: ${msg}` };
+    }
+  }
+
+  async markResolved(filePath: string): Promise<{ error?: string }> {
+    try {
+      await this.git.raw(['add', '--', filePath]);
+      return {};
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { error: `Mark resolved failed: ${msg}` };
+    }
+  }
+
+  /**
+   * Restore conflict markers in working copy by checking out from the merge
+   * stage. Only meaningful while an operation is in progress.
+   */
+  async markUnresolved(filePath: string): Promise<{ error?: string }> {
+    try {
+      await this.git.raw(['checkout', '--merge', '--', filePath]);
+      return {};
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { error: `Mark unresolved failed: ${msg}` };
+    }
+  }
+
+  async abortOperation(): Promise<{ error?: string }> {
+    const op = await this.getOperationInProgress();
+    if (!op) return { error: 'No operation in progress' };
+    const subcommand =
+      op.kind === 'merge'
+        ? 'merge'
+        : op.kind === 'rebase'
+          ? 'rebase'
+          : op.kind === 'cherry-pick'
+            ? 'cherry-pick'
+            : 'revert';
+    try {
+      await this.git.raw([subcommand, '--abort']);
+      return {};
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { error: `${subcommand} --abort failed: ${msg}` };
+    }
+  }
+
   async archiveCommit(
     hash: string,
     filePath: string,

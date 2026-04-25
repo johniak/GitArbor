@@ -38,6 +38,9 @@
     onIgnoreFiles?: (paths: string[]) => void;
     onStageAll?: () => void;
     onUnstageAll?: () => void;
+    onResolveConflict?: (path: string, strategy: 'mine' | 'theirs') => void;
+    onMarkResolved?: (path: string) => void;
+    onMarkUnresolved?: (path: string) => void;
   };
 
   let {
@@ -58,6 +61,9 @@
     onIgnoreFiles,
     onStageAll,
     onUnstageAll,
+    onResolveConflict,
+    onMarkResolved,
+    onMarkUnresolved,
   }: Props = $props();
 
   let stagedExpanded = $state(true);
@@ -348,6 +354,71 @@
       onclick={(e) => e.stopPropagation()}
     >
       {#if contextMenuFiles.length === 1}
+        {#if contextMenuFiles[0].status === 'U'}
+          <div class="context-item-with-submenu">
+            <button
+              class="context-item context-item-trigger"
+              type="button"
+              data-testid="resolve-conflicts-trigger"
+            >
+              <span>Resolve Conflicts</span>
+              <span class="submenu-arrow">›</span>
+            </button>
+            <div class="submenu">
+              <button
+                class="context-item"
+                type="button"
+                disabled
+                title="Configure git merge.tool first"
+                >Launch External Merge Tool</button
+              >
+              <button
+                class="context-item"
+                type="button"
+                onclick={() => {
+                  onResolveConflict?.(contextMenuFiles[0].path, 'mine');
+                  closeContextMenu();
+                }}
+                data-testid="resolve-using-mine"
+                >Resolve Using 'Mine' (keep the changes from your current
+                branch)</button
+              >
+              <button
+                class="context-item"
+                type="button"
+                onclick={() => {
+                  onResolveConflict?.(contextMenuFiles[0].path, 'theirs');
+                  closeContextMenu();
+                }}
+                data-testid="resolve-using-theirs"
+                >Resolve Using 'Theirs' (accept the incoming changes)</button
+              >
+              <div class="context-separator"></div>
+              <button class="context-item" type="button" disabled
+                >Restart Merge</button
+              >
+              <button
+                class="context-item"
+                type="button"
+                onclick={() => {
+                  onMarkResolved?.(contextMenuFiles[0].path);
+                  closeContextMenu();
+                }}
+                data-testid="mark-resolved">Mark Resolved</button
+              >
+              <button
+                class="context-item"
+                type="button"
+                onclick={() => {
+                  onMarkUnresolved?.(contextMenuFiles[0].path);
+                  closeContextMenu();
+                }}
+                data-testid="mark-unresolved">Mark Unresolved</button
+              >
+            </div>
+          </div>
+          <div class="context-separator"></div>
+        {/if}
         <button
           class="context-item"
           onclick={() => {
@@ -732,5 +803,57 @@
   .context-item-danger:hover {
     background: var(--color-diff-deleted);
     color: var(--color-text-white);
+  }
+
+  .context-item:disabled {
+    color: var(--color-text-secondary);
+    opacity: 0.55;
+    cursor: default;
+  }
+
+  .context-item:disabled:hover {
+    background: none;
+  }
+
+  .context-separator {
+    height: 1px;
+    background: var(--color-border);
+    margin: 4px 0;
+  }
+
+  .context-item-with-submenu {
+    position: relative;
+  }
+
+  .context-item-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .submenu-arrow {
+    font-size: 14px;
+    color: var(--color-text-secondary);
+    line-height: 1;
+  }
+
+  .submenu {
+    display: none;
+    position: absolute;
+    left: 100%;
+    top: -4px;
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    padding: 4px 0;
+    min-width: 280px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    z-index: 1002;
+  }
+
+  .context-item-with-submenu:hover .submenu,
+  .context-item-with-submenu:focus-within .submenu {
+    display: block;
   }
 </style>

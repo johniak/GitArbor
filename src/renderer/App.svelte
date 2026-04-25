@@ -22,6 +22,8 @@
   import RevertCommitDialog from './components/RevertCommitDialog.svelte';
   import CherryPickDialog from './components/CherryPickDialog.svelte';
   import PushRevisionDialog from './components/PushRevisionDialog.svelte';
+  import ConflictBanner from './components/ConflictBanner.svelte';
+  import type { OperationInProgress } from '../shared/ipc';
   import { mockSidebar, mockCommits, mockFiles, mockDiff } from './mock-data';
   import type {
     ChangedFile,
@@ -87,6 +89,7 @@
   let selectedCommitFullHash = $state<string | null>(null);
   let isWorkingChangesSelected = $state(false);
   let workingStatus = $state<WorkingStatus | null>(null);
+  let operationInProgress = $state<OperationInProgress | null>(null);
   let changedFiles = $state<ChangedFile[]>(mockFiles);
   let selectedFile = $state<string | null>(mockFiles[0]?.path ?? null);
   let selectedFileStaged = $state(false);
@@ -291,6 +294,15 @@
       workingStatus = await window.electronAPI.git.getWorkingStatus();
     } catch {
       workingStatus = null;
+    }
+
+    // Detect ongoing merge / rebase / cherry-pick / revert so the banner can
+    // surface conflict resolution UI instead of leaving the user stranded.
+    try {
+      operationInProgress =
+        await window.electronAPI.git.getOperationInProgress();
+    } catch {
+      operationInProgress = null;
     }
 
     // Commits — reset and load first page
@@ -1102,6 +1114,45 @@
     }
   }
 
+  async function handleResolveConflict(
+    filePath: string,
+    strategy: 'mine' | 'theirs',
+  ) {
+    const res = await window.electronAPI.git.resolveConflict(
+      filePath,
+      strategy,
+    );
+    if (res?.error) {
+      showError('Resolve conflict failed', res.error);
+    }
+    await loadAllData({ autoSelect: false });
+  }
+
+  async function handleMarkResolved(filePath: string) {
+    const res = await window.electronAPI.git.markResolved(filePath);
+    if (res?.error) {
+      showError('Mark resolved failed', res.error);
+    }
+    await loadAllData({ autoSelect: false });
+  }
+
+  async function handleMarkUnresolved(filePath: string) {
+    const res = await window.electronAPI.git.markUnresolved(filePath);
+    if (res?.error) {
+      showError('Mark unresolved failed', res.error);
+    }
+    await loadAllData({ autoSelect: false });
+  }
+
+  async function handleAbortOperation() {
+    const res = await window.electronAPI.git.abortOperation();
+    if (res?.error) {
+      showError('Abort failed', res.error);
+      return;
+    }
+    await loadAllData();
+  }
+
   async function handleCopyShaToClipboard(hash: string) {
     try {
       await navigator.clipboard.writeText(hash);
@@ -1119,6 +1170,16 @@
     aheadCount={sidebarData.branches.find((b) => b.current)?.ahead ?? 0}
     behindCount={sidebarData.branches.find((b) => b.current)?.behind ?? 0}
   />
+
+  {#if operationInProgress}
+    <ConflictBanner
+      kind={operationInProgress.kind}
+      conflictCount={(workingStatus?.unstaged ?? []).filter(
+        (f) => f.status === 'U',
+      ).length}
+      onAbort={handleAbortOperation}
+    />
+  {/if}
 
   <div class="main-area">
     <div class="sidebar-panel" style="width:{sidebarWidth}px">
@@ -1161,6 +1222,9 @@
                 onIgnoreFiles={handleIgnoreFiles}
                 onStageAll={handleStageAll}
                 onUnstageAll={handleUnstageAll}
+                onResolveConflict={handleResolveConflict}
+                onMarkResolved={handleMarkResolved}
+                onMarkUnresolved={handleMarkUnresolved}
               />
             </div>
 
@@ -1231,6 +1295,9 @@
               onIgnoreFiles={handleIgnoreFiles}
               onStageAll={handleStageAll}
               onUnstageAll={handleUnstageAll}
+              onResolveConflict={handleResolveConflict}
+              onMarkResolved={handleMarkResolved}
+              onMarkUnresolved={handleMarkUnresolved}
             />
           </div>
 

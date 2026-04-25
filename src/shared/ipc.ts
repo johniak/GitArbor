@@ -25,6 +25,14 @@ export interface GetCommitsRequest {
   logOrder?: 'date' | 'topo';
 }
 
+export type OperationKind = 'merge' | 'rebase' | 'cherry-pick' | 'revert';
+
+export interface OperationInProgress {
+  kind: OperationKind;
+}
+
+export type ConflictStrategy = 'mine' | 'theirs';
+
 /** IPC channel names — single source of truth for main + renderer */
 export const IPC = {
   GIT_GET_BRANCHES: 'git:get-branches',
@@ -63,6 +71,11 @@ export const IPC = {
   GIT_RESET: 'git:reset',
   GIT_REVERT: 'git:revert',
   GIT_CHERRY_PICK: 'git:cherry-pick',
+  GIT_GET_OPERATION_IN_PROGRESS: 'git:get-operation-in-progress',
+  GIT_RESOLVE_CONFLICT: 'git:resolve-conflict',
+  GIT_MARK_RESOLVED: 'git:mark-resolved',
+  GIT_MARK_UNRESOLVED: 'git:mark-unresolved',
+  GIT_ABORT_OPERATION: 'git:abort-operation',
   GIT_ARCHIVE: 'git:archive',
   GIT_CREATE_PATCH_FROM_COMMIT: 'git:create-patch-from-commit',
   GIT_PUSH_REVISION: 'git:push-revision',
@@ -160,6 +173,14 @@ export interface GitAPI {
   cherryPick(
     hash: string,
   ): Promise<{ conflicts: string[]; summary: string; error?: string }>;
+  getOperationInProgress(): Promise<OperationInProgress | null>;
+  resolveConflict(
+    filePath: string,
+    strategy: ConflictStrategy,
+  ): Promise<{ error?: string }>;
+  markResolved(filePath: string): Promise<{ error?: string }>;
+  markUnresolved(filePath: string): Promise<{ error?: string }>;
+  abortOperation(): Promise<{ error?: string }>;
   archiveCommit(
     hash: string,
     defaultName: string,

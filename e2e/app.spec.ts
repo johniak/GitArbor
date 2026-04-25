@@ -2416,3 +2416,143 @@ test.describe('Commit context menu — full action set', () => {
     await expect(window.locator('.commit-context-menu')).not.toBeVisible();
   });
 });
+
+test.describe('Merge conflicts', () => {
+  async function setupConflict(repoPath: string) {
+    const simpleGit = (await import('simple-git')).default;
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const g = simpleGit(repoPath);
+    // Default fixture leaves dirty working tree — must clean before branching.
+    await g.raw(['reset', '--hard', 'HEAD']);
+    await g.raw(['clean', '-fd']);
+    const { createMergeConflict } = await import('./fixtures/test-repo');
+    await createMergeConflict(repoPath);
+    void fs;
+    void path;
+  }
+
+  async function triggerMergeFromSidebar(window: import('playwright').Page) {
+    const branch = window
+      .locator('.tree-item', { hasText: 'merge-conflict-test' })
+      .first();
+    await expect(branch).toBeVisible({ timeout: 15_000 });
+    window.on('dialog', (d) => d.accept());
+    await branch.click({ button: 'right' });
+    await expect(window.locator('.context-menu')).toBeVisible();
+    await window.locator('.context-item', { hasText: /^Merge / }).click();
+    // Conflict produces an ErrorDialog — close it so the file list is reachable.
+    await expect(window.locator('.btn-ok')).toBeVisible({ timeout: 15_000 });
+    await window.locator('.btn-ok').click();
+  }
+
+  test('merge with conflict surfaces banner', async ({
+    window,
+    testRepoPath,
+  }) => {
+    await setupConflict(testRepoPath);
+    await window.reload();
+    await window.waitForLoadState('domcontentloaded');
+
+    await triggerMergeFromSidebar(window);
+
+    const banner = window.locator('[data-testid="conflict-banner"]');
+    await expect(banner).toBeVisible({ timeout: 10_000 });
+    await expect(banner).toContainText(/Merge in progress/);
+  });
+
+  test('right-click conflicted file shows Resolve Conflicts submenu', async ({
+    window,
+    testRepoPath,
+  }) => {
+    await setupConflict(testRepoPath);
+    await window.reload();
+    await window.waitForLoadState('domcontentloaded');
+    await triggerMergeFromSidebar(window);
+
+    // Click the "Uncommitted changes" row so the working file list is shown.
+    const workingRow = window
+      .locator('.commit-row', { hasText: 'Uncommitted changes' })
+      .first();
+    if (await workingRow.isVisible().catch(() => false)) {
+      await workingRow.dispatchEvent('click');
+    }
+
+    const authFile = window
+      .locator('.file-row', { hasText: 'auth.ts' })
+      .first();
+    await expect(authFile).toBeVisible({ timeout: 10_000 });
+    await authFile.click({ button: 'right' });
+
+    await expect(
+      window.locator('[data-testid="resolve-conflicts-trigger"]'),
+    ).toBeVisible();
+  });
+
+  test("Resolve Using 'Mine' writes branch's main version and stages it", async ({
+    window,
+    testRepoPath,
+  }) => {
+    await setupConflict(testRepoPath);
+    await window.reload();
+    await window.waitForLoadState('domcontentloaded');
+    await triggerMergeFromSidebar(window);
+
+    const workingRow = window
+      .locator('.commit-row', { hasText: 'Uncommitted changes' })
+      .first();
+    if (await workingRow.isVisible().catch(() => false)) {
+      await workingRow.dispatchEvent('click');
+    }
+
+    const authFile = window
+      .locator('.file-row', { hasText: 'auth.ts' })
+      .first();
+    await expect(authFile).toBeVisible({ timeout: 10_000 });
+    await authFile.click({ button: 'right' });
+
+    await window.locator('[data-testid="resolve-conflicts-trigger"]').hover();
+    await window.locator('[data-testid="resolve-using-mine"]').click();
+
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    // Mine in a merge = current branch (main) version.
+    await expect
+      .poll(
+        () => fs.readFileSync(path.join(testRepoPath, 'auth.ts'), 'utf-8'),
+        { timeout: 10_000 },
+      )
+      .toContain('main');
+  });
+
+  test('Abort restores tree out of merge state', async ({
+    window,
+    testRepoPath,
+  }) => {
+    await setupConflict(testRepoPath);
+    await window.reload();
+    await window.waitForLoadState('domcontentloaded');
+    await triggerMergeFromSidebar(window);
+
+    await expect(window.locator('[data-testid="conflict-banner"]')).toBeVisible(
+      { timeout: 10_000 },
+    );
+
+    await window.locator('[data-testid="conflict-banner-abort"]').click();
+
+    await expect(
+      window.locator('[data-testid="conflict-banner"]'),
+    ).not.toBeVisible({ timeout: 10_000 });
+
+    const simpleGit = (await import('simple-git')).default;
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const gitDir = (
+      await simpleGit(testRepoPath).revparse(['--git-dir'])
+    ).trim();
+    const absGitDir = path.isAbsolute(gitDir)
+      ? gitDir
+      : path.join(testRepoPath, gitDir);
+    expect(fs.existsSync(path.join(absGitDir, 'MERGE_HEAD'))).toBe(false);
+  });
+});

@@ -1168,4 +1168,222 @@ describe('GitService', () => {
       ]);
     });
   });
+
+  describe('conflict resolution', () => {
+    // revparse returns ".git" for --git-dir queries; getGitDir then anchors
+    // it to repo root via getRepoRoot (which also calls revparse).
+    function makeRevparse(gitDirRel = '.git', repoRoot = '/repo') {
+      return vi.fn(async (args: string[]) => {
+        if (args[0] === '--git-dir') return gitDirRel;
+        if (args[0] === '--show-toplevel') return repoRoot;
+        return '';
+      });
+    }
+
+    function existsSwitch(presentPaths: string[]) {
+      return (p: fs.PathLike) =>
+        presentPaths.some((seg) => String(p).endsWith(seg));
+    }
+
+    let existsSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      existsSpy = vi.spyOn(fs, 'existsSync');
+    });
+
+    afterEach(() => {
+      existsSpy.mockRestore();
+    });
+
+    describe('getOperationInProgress', () => {
+      it('returns merge when MERGE_HEAD exists', async () => {
+        existsSpy.mockImplementation(existsSwitch(['MERGE_HEAD']));
+        const mockGit = createMockGit({
+          revparse: makeRevparse(),
+        } as unknown as Partial<SimpleGit>);
+        const result = await new GitService(mockGit).getOperationInProgress();
+        expect(result).toEqual({ kind: 'merge' });
+      });
+
+      it('returns rebase when rebase-merge dir exists', async () => {
+        existsSpy.mockImplementation(existsSwitch(['rebase-merge']));
+        const mockGit = createMockGit({
+          revparse: makeRevparse(),
+        } as unknown as Partial<SimpleGit>);
+        const result = await new GitService(mockGit).getOperationInProgress();
+        expect(result).toEqual({ kind: 'rebase' });
+      });
+
+      it('returns rebase when rebase-apply dir exists', async () => {
+        existsSpy.mockImplementation(existsSwitch(['rebase-apply']));
+        const mockGit = createMockGit({
+          revparse: makeRevparse(),
+        } as unknown as Partial<SimpleGit>);
+        const result = await new GitService(mockGit).getOperationInProgress();
+        expect(result).toEqual({ kind: 'rebase' });
+      });
+
+      it('returns cherry-pick when CHERRY_PICK_HEAD exists', async () => {
+        existsSpy.mockImplementation(existsSwitch(['CHERRY_PICK_HEAD']));
+        const mockGit = createMockGit({
+          revparse: makeRevparse(),
+        } as unknown as Partial<SimpleGit>);
+        const result = await new GitService(mockGit).getOperationInProgress();
+        expect(result).toEqual({ kind: 'cherry-pick' });
+      });
+
+      it('returns null when no operation markers present', async () => {
+        existsSpy.mockImplementation(() => false);
+        const mockGit = createMockGit({
+          revparse: makeRevparse(),
+        } as unknown as Partial<SimpleGit>);
+        const result = await new GitService(mockGit).getOperationInProgress();
+        expect(result).toBeNull();
+      });
+    });
+
+    describe('resolveConflict', () => {
+      it('uses --ours for "mine" during merge, then stages', async () => {
+        existsSpy.mockImplementation(existsSwitch(['MERGE_HEAD']));
+        const rawFn = vi.fn().mockResolvedValue('');
+        const mockGit = createMockGit({
+          revparse: makeRevparse(),
+          raw: rawFn,
+        } as unknown as Partial<SimpleGit>);
+        const result = await new GitService(mockGit).resolveConflict(
+          'src/foo.ts',
+          'mine',
+        );
+        expect(result).toEqual({});
+        expect(rawFn).toHaveBeenNthCalledWith(1, [
+          'checkout',
+          '--ours',
+          '--',
+          'src/foo.ts',
+        ]);
+        expect(rawFn).toHaveBeenNthCalledWith(2, ['add', '--', 'src/foo.ts']);
+      });
+
+      it('uses --theirs for "theirs" during merge', async () => {
+        existsSpy.mockImplementation(existsSwitch(['MERGE_HEAD']));
+        const rawFn = vi.fn().mockResolvedValue('');
+        const mockGit = createMockGit({
+          revparse: makeRevparse(),
+          raw: rawFn,
+        } as unknown as Partial<SimpleGit>);
+        await new GitService(mockGit).resolveConflict('src/foo.ts', 'theirs');
+        expect(rawFn).toHaveBeenNthCalledWith(1, [
+          'checkout',
+          '--theirs',
+          '--',
+          'src/foo.ts',
+        ]);
+      });
+
+      it('inverts flag during rebase: "mine" maps to --theirs', async () => {
+        existsSpy.mockImplementation(existsSwitch(['rebase-merge']));
+        const rawFn = vi.fn().mockResolvedValue('');
+        const mockGit = createMockGit({
+          revparse: makeRevparse(),
+          raw: rawFn,
+        } as unknown as Partial<SimpleGit>);
+        await new GitService(mockGit).resolveConflict('src/foo.ts', 'mine');
+        expect(rawFn).toHaveBeenNthCalledWith(1, [
+          'checkout',
+          '--theirs',
+          '--',
+          'src/foo.ts',
+        ]);
+      });
+
+      it('inverts flag during rebase: "theirs" maps to --ours', async () => {
+        existsSpy.mockImplementation(existsSwitch(['rebase-merge']));
+        const rawFn = vi.fn().mockResolvedValue('');
+        const mockGit = createMockGit({
+          revparse: makeRevparse(),
+          raw: rawFn,
+        } as unknown as Partial<SimpleGit>);
+        await new GitService(mockGit).resolveConflict('src/foo.ts', 'theirs');
+        expect(rawFn).toHaveBeenNthCalledWith(1, [
+          'checkout',
+          '--ours',
+          '--',
+          'src/foo.ts',
+        ]);
+      });
+
+      it('returns error string on raw failure', async () => {
+        existsSpy.mockImplementation(existsSwitch(['MERGE_HEAD']));
+        const rawFn = vi.fn().mockRejectedValue(new Error('boom'));
+        const mockGit = createMockGit({
+          revparse: makeRevparse(),
+          raw: rawFn,
+        } as unknown as Partial<SimpleGit>);
+        const result = await new GitService(mockGit).resolveConflict(
+          'src/foo.ts',
+          'mine',
+        );
+        expect(result.error).toContain('Resolve src/foo.ts failed');
+      });
+    });
+
+    describe('markResolved', () => {
+      it('runs git add', async () => {
+        const rawFn = vi.fn().mockResolvedValue('');
+        const mockGit = createMockGit({ raw: rawFn });
+        const result = await new GitService(mockGit).markResolved('foo.ts');
+        expect(result).toEqual({});
+        expect(rawFn).toHaveBeenCalledWith(['add', '--', 'foo.ts']);
+      });
+    });
+
+    describe('markUnresolved', () => {
+      it('runs git checkout --merge to restore conflict markers', async () => {
+        const rawFn = vi.fn().mockResolvedValue('');
+        const mockGit = createMockGit({ raw: rawFn });
+        const result = await new GitService(mockGit).markUnresolved('foo.ts');
+        expect(result).toEqual({});
+        expect(rawFn).toHaveBeenCalledWith([
+          'checkout',
+          '--merge',
+          '--',
+          'foo.ts',
+        ]);
+      });
+    });
+
+    describe('abortOperation', () => {
+      it('runs merge --abort during merge', async () => {
+        existsSpy.mockImplementation(existsSwitch(['MERGE_HEAD']));
+        const rawFn = vi.fn().mockResolvedValue('');
+        const mockGit = createMockGit({
+          revparse: makeRevparse(),
+          raw: rawFn,
+        } as unknown as Partial<SimpleGit>);
+        const result = await new GitService(mockGit).abortOperation();
+        expect(result).toEqual({});
+        expect(rawFn).toHaveBeenCalledWith(['merge', '--abort']);
+      });
+
+      it('runs rebase --abort during rebase', async () => {
+        existsSpy.mockImplementation(existsSwitch(['rebase-merge']));
+        const rawFn = vi.fn().mockResolvedValue('');
+        const mockGit = createMockGit({
+          revparse: makeRevparse(),
+          raw: rawFn,
+        } as unknown as Partial<SimpleGit>);
+        await new GitService(mockGit).abortOperation();
+        expect(rawFn).toHaveBeenCalledWith(['rebase', '--abort']);
+      });
+
+      it('returns error when no operation in progress', async () => {
+        existsSpy.mockImplementation(() => false);
+        const mockGit = createMockGit({
+          revparse: makeRevparse(),
+        } as unknown as Partial<SimpleGit>);
+        const result = await new GitService(mockGit).abortOperation();
+        expect(result.error).toBe('No operation in progress');
+      });
+    });
+  });
 });

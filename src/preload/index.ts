@@ -111,6 +111,15 @@ const api: ElectronAPI = {
       ipcRenderer.invoke(IPC.GIT_RESET, { hash, mode }),
     revertCommit: (hash: string) => ipcRenderer.invoke(IPC.GIT_REVERT, hash),
     cherryPick: (hash: string) => ipcRenderer.invoke(IPC.GIT_CHERRY_PICK, hash),
+    getOperationInProgress: () =>
+      ipcRenderer.invoke(IPC.GIT_GET_OPERATION_IN_PROGRESS),
+    resolveConflict: (filePath: string, strategy: 'mine' | 'theirs') =>
+      ipcRenderer.invoke(IPC.GIT_RESOLVE_CONFLICT, { filePath, strategy }),
+    markResolved: (filePath: string) =>
+      ipcRenderer.invoke(IPC.GIT_MARK_RESOLVED, filePath),
+    markUnresolved: (filePath: string) =>
+      ipcRenderer.invoke(IPC.GIT_MARK_UNRESOLVED, filePath),
+    abortOperation: () => ipcRenderer.invoke(IPC.GIT_ABORT_OPERATION),
     archiveCommit: (hash: string, defaultName: string) =>
       ipcRenderer.invoke(IPC.GIT_ARCHIVE, { hash, defaultName }),
     createPatchFromCommit: (hash: string, defaultName: string) =>

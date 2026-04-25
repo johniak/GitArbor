@@ -40,8 +40,8 @@ GitArbor feature matrix. `[x]` = done, `[ ]` = planned / missing, `[~]` = partia
 - [ ] File search within file lists
 - [ ] File type change detection (permissions, symlinks)
 - [ ] Clean working copy (`git clean -fd` UI for untracked)
-- [ ] Mark as resolved after conflict
-- [ ] Reveal in Finder / Explorer
+- [x] Mark as resolved after conflict
+- [x] Reveal in Finder / Explorer
 - [ ] Launch external merge tool
 - [ ] Launch external diff tool
 - [ ] Drag-drop to stage / unstage
@@ -160,10 +160,13 @@ GitArbor feature matrix. `[x]` = done, `[ ]` = planned / missing, `[~]` = partia
 - [x] Merge commit from context menu (by SHA)
 - [x] Conflict detection (`status.conflicted`)
 - [x] Error dialog with list of conflicted files
+- [x] Conflict banner with operation kind + counter + Abort button
+- [x] Per-file resolve: ours / theirs (auto-flipped during rebase)
+- [x] Per-file mark resolved / mark unresolved
+- [x] Abort merge (`git merge --abort`)
 - [ ] Fast-forward only / No-ff / Squash toggle
 - [ ] Edit merge commit message
 - [ ] Auto-commit after successful merge (option)
-- [ ] Abort merge (`git merge --abort`)
 - [ ] Continue merge after resolve (UI)
 - [ ] Choose parent when merging multi-parent
 
@@ -172,8 +175,8 @@ GitArbor feature matrix. `[x]` = done, `[ ]` = planned / missing, `[~]` = partia
 - [x] Rebase current onto branch / commit
 - [x] Rebase from commit context menu
 - [x] Conflict detection
+- [x] Abort rebase (`git rebase --abort`)
 - [ ] Interactive rebase (pick / reword / squash / fixup / drop / edit / reorder)
-- [ ] Abort rebase (`git rebase --abort`)
 - [ ] Continue rebase (`git rebase --continue`)
 - [ ] Skip commit in rebase
 - [ ] Rebase `--onto` (three-argument)
@@ -262,7 +265,7 @@ GitArbor feature matrix. `[x]` = done, `[ ]` = planned / missing, `[~]` = partia
 - [x] Window > Show Repository Browser menu entry (`Cmd+Shift+O`)
 - [x] Cmd+, / Ctrl+, opens Settings window
 - [x] Main window title follows the repo directory name
-- [~] Terminal integration — toolbar action present, handler is a stub
+- [x] Terminal integration — toolbar opens platform-native terminal in repo cwd
 - [ ] Light theme / theme switcher / auto from system
 - [ ] Font family / font size customization
 - [ ] Staging mode switcher (no-staging / fluid / split)

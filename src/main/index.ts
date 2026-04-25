@@ -436,6 +436,40 @@ ipcMain.handle(IPC.GIT_CHERRY_PICK, async (_event, hash: string) => {
   return res;
 });
 
+ipcMain.handle(IPC.GIT_GET_OPERATION_IN_PROGRESS, () =>
+  getGitService().getOperationInProgress(),
+);
+
+ipcMain.handle(
+  IPC.GIT_RESOLVE_CONFLICT,
+  async (
+    _event,
+    { filePath, strategy }: { filePath: string; strategy: 'mine' | 'theirs' },
+  ) => {
+    const res = await getGitService().resolveConflict(filePath, strategy);
+    notifyRepoChanged();
+    return res;
+  },
+);
+
+ipcMain.handle(IPC.GIT_MARK_RESOLVED, async (_event, filePath: string) => {
+  const res = await getGitService().markResolved(filePath);
+  notifyRepoChanged();
+  return res;
+});
+
+ipcMain.handle(IPC.GIT_MARK_UNRESOLVED, async (_event, filePath: string) => {
+  const res = await getGitService().markUnresolved(filePath);
+  notifyRepoChanged();
+  return res;
+});
+
+ipcMain.handle(IPC.GIT_ABORT_OPERATION, async () => {
+  const res = await getGitService().abortOperation();
+  notifyRepoChanged();
+  return res;
+});
+
 ipcMain.handle(
   IPC.GIT_ARCHIVE,
   async (

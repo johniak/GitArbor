@@ -159,3 +159,31 @@ export async function createTestRepo(): Promise<TestRepo> {
     cleanup: () => fs.rmSync(tmpDir, { recursive: true, force: true }),
   };
 }
+
+/**
+ * Set up a merge conflict scenario in an existing test repo.
+ *
+ * Creates branch `merge-conflict-test` that modifies `auth.ts` one way, then
+ * commits an incompatible change to the same file on `main`. Merging
+ * `merge-conflict-test` into `main` is then guaranteed to surface a conflict
+ * in `auth.ts`. Branch name is flat (no slash) so it appears as a top-level
+ * tree-item in the sidebar.
+ *
+ * Caller should clean the working tree first (`git reset --hard HEAD && git
+ * clean -fd`) — the default fixture leaves dirty working state behind.
+ */
+export async function createMergeConflict(repoPath: string): Promise<void> {
+  const git = simpleGit(repoPath);
+  const authPath = path.join(repoPath, 'auth.ts');
+
+  await git.checkout('main');
+  await git.checkoutLocalBranch('merge-conflict-test');
+  fs.writeFileSync(authPath, 'export function auth() { return "branch"; }\n');
+  await git.add('.');
+  await git.commit('feat: tweak auth from branch');
+
+  await git.checkout('main');
+  fs.writeFileSync(authPath, 'export function auth() { return "main"; }\n');
+  await git.add('.');
+  await git.commit('feat: tweak auth from main');
+}
