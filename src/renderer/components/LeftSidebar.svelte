@@ -68,6 +68,7 @@
     onApplyStash?: (index: number, message: string) => void;
     onMergeBranch?: (name: string) => void;
     onRebaseBranch?: (name: string) => void;
+    onDeleteBranch?: (name: string) => void;
     onCheckoutRemoteBranch?: (remoteName: string, branch: string) => void;
     onNewBranch?: () => void;
     onScrollToBranch?: (branchName: string) => void;
@@ -82,6 +83,7 @@
     onApplyStash,
     onMergeBranch,
     onRebaseBranch,
+    onDeleteBranch,
     onCheckoutRemoteBranch,
     onNewBranch,
     onScrollToBranch,
@@ -421,6 +423,20 @@
       >
         Rebase current changes onto {contextMenu.branch}
       </button>
+      <div class="context-separator"></div>
+      <button
+        class="context-item context-item-danger"
+        disabled={contextMenu.branch === currentBranch}
+        title={contextMenu.branch === currentBranch
+          ? 'Cannot delete the current branch'
+          : ''}
+        onclick={() => {
+          onDeleteBranch?.(contextMenu!.branch);
+          closeContextMenu();
+        }}
+      >
+        Delete {contextMenu.branch}...
+      </button>
     {/if}
   </div>
 {/if}
@@ -633,8 +649,28 @@
     cursor: pointer;
   }
 
-  .context-item:hover {
+  .context-item:hover:not(:disabled) {
     background: var(--color-bg-selected);
     color: var(--color-text-white);
+  }
+
+  .context-item:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .context-item-danger {
+    color: var(--color-diff-deleted);
+  }
+
+  .context-item-danger:hover:not(:disabled) {
+    background: var(--color-diff-deleted);
+    color: var(--color-text-white);
+  }
+
+  .context-separator {
+    height: 1px;
+    background: var(--color-border);
+    margin: 4px 0;
   }
 </style>

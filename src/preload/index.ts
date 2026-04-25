@@ -6,6 +6,7 @@ import type {
   GetCommitsRequest,
   RepoSettings,
   AppSettings,
+  SearchCommitsRequest,
 } from '../shared/ipc';
 
 const api: ElectronAPI = {
@@ -59,6 +60,10 @@ const api: ElectronAPI = {
     checkout: (target: string) => ipcRenderer.invoke(IPC.GIT_CHECKOUT, target),
     createBranch: (name: string, startPoint?: string) =>
       ipcRenderer.invoke(IPC.GIT_CREATE_BRANCH, { name, startPoint }),
+    deleteBranch: (name: string, force: boolean) =>
+      ipcRenderer.invoke(IPC.GIT_DELETE_BRANCH, { name, force }),
+    searchCommits: (request: SearchCommitsRequest) =>
+      ipcRenderer.invoke(IPC.GIT_SEARCH_COMMITS, request),
     createTag: (
       name: string,
       commit: string,
@@ -120,6 +125,7 @@ const api: ElectronAPI = {
     markUnresolved: (filePath: string) =>
       ipcRenderer.invoke(IPC.GIT_MARK_UNRESOLVED, filePath),
     abortOperation: () => ipcRenderer.invoke(IPC.GIT_ABORT_OPERATION),
+    continueOperation: () => ipcRenderer.invoke(IPC.GIT_CONTINUE_OPERATION),
     archiveCommit: (hash: string, defaultName: string) =>
       ipcRenderer.invoke(IPC.GIT_ARCHIVE, { hash, defaultName }),
     createPatchFromCommit: (hash: string, defaultName: string) =>

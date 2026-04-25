@@ -6,9 +6,10 @@
     kind: OperationKind;
     conflictCount: number;
     onAbort: () => void;
+    onContinue: () => void;
   };
 
-  let { kind, conflictCount, onAbort }: Props = $props();
+  let { kind, conflictCount, onAbort, onContinue }: Props = $props();
 
   const kindLabel = $derived(
     kind === 'merge'
@@ -20,10 +21,12 @@
           : 'Revert',
   );
 
+  const continueLabel = $derived(kind === 'merge' ? 'Commit' : 'Continue');
+
   const message = $derived(
     conflictCount > 0
       ? `${kindLabel} in progress — ${conflictCount} ${conflictCount === 1 ? 'conflict' : 'conflicts'} to resolve`
-      : `${kindLabel} in progress — all conflicts resolved, ready to commit`,
+      : `${kindLabel} in progress — all conflicts resolved, ready to ${kind === 'merge' ? 'commit' : 'continue'}`,
   );
 </script>
 
@@ -32,12 +35,21 @@
     <AlertTriangle size={16} strokeWidth={1.8} />
     <span class="msg">{message}</span>
   </div>
-  <button
-    type="button"
-    class="abort"
-    onclick={onAbort}
-    data-testid="conflict-banner-abort">Abort</button
-  >
+  <div class="actions">
+    <button
+      type="button"
+      class="continue"
+      disabled={conflictCount > 0}
+      onclick={onContinue}
+      data-testid="conflict-banner-continue">{continueLabel}</button
+    >
+    <button
+      type="button"
+      class="abort"
+      onclick={onAbort}
+      data-testid="conflict-banner-abort">Abort</button
+    >
+  </div>
 </div>
 
 <style>
@@ -62,6 +74,31 @@
 
   .msg {
     font-weight: 500;
+  }
+
+  .actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .continue {
+    background: var(--color-diff-added);
+    color: #ffffff;
+    border: none;
+    padding: 4px 14px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .continue:hover:not(:disabled) {
+    filter: brightness(1.1);
+  }
+
+  .continue:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
 
   .abort {

@@ -2555,4 +2555,194 @@ test.describe('Merge conflicts', () => {
       : path.join(testRepoPath, gitDir);
     expect(fs.existsSync(path.join(absGitDir, 'MERGE_HEAD'))).toBe(false);
   });
+
+  test('Continue (Commit) finalises merge and clears banner', async ({
+    window,
+    testRepoPath,
+  }) => {
+    await setupConflict(testRepoPath);
+    await window.reload();
+    await window.waitForLoadState('domcontentloaded');
+    await triggerMergeFromSidebar(window);
+
+    // Open the Uncommitted row so the conflicted file is in the file list.
+    const workingRow = window
+      .locator('.commit-row', { hasText: 'Uncommitted changes' })
+      .first();
+    if (await workingRow.isVisible().catch(() => false)) {
+      await workingRow.dispatchEvent('click');
+    }
+
+    const authFile = window
+      .locator('.file-row', { hasText: 'auth.ts' })
+      .first();
+    await expect(authFile).toBeVisible({ timeout: 10_000 });
+    await authFile.click({ button: 'right' });
+    await window.locator('[data-testid="resolve-conflicts-trigger"]').hover();
+    await window.locator('[data-testid="resolve-using-mine"]').click();
+
+    // Banner Continue button enables once conflicts are cleared.
+    const continueBtn = window.locator(
+      '[data-testid="conflict-banner-continue"]',
+    );
+    await expect(continueBtn).toBeEnabled({ timeout: 10_000 });
+    await continueBtn.click();
+
+    await expect(
+      window.locator('[data-testid="conflict-banner"]'),
+    ).not.toBeVisible({ timeout: 10_000 });
+
+    const simpleGit = (await import('simple-git')).default;
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const gitDir = (
+      await simpleGit(testRepoPath).revparse(['--git-dir'])
+    ).trim();
+    const absGitDir = path.isAbsolute(gitDir)
+      ? gitDir
+      : path.join(testRepoPath, gitDir);
+    expect(fs.existsSync(path.join(absGitDir, 'MERGE_HEAD'))).toBe(false);
+  });
+});
+
+test.describe('Delete branch', () => {
+  async function cleanWorkingTree(repoPath: string) {
+    const simpleGit = (await import('simple-git')).default;
+    const g = simpleGit(repoPath);
+    await g.raw(['reset', '--hard', 'HEAD']);
+    await g.raw(['clean', '-fd']);
+  }
+
+  test('soft delete removes a merged branch from sidebar', async ({
+    window,
+    testRepoPath,
+  }) => {
+    await cleanWorkingTree(testRepoPath);
+    // Create a uniquely-named, fast-forwarded branch so soft delete (`-d`) is
+    // allowed and the locator matches exactly one row.
+    const simpleGit = (await import('simple-git')).default;
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const g = simpleGit(testRepoPath);
+    await g.checkoutLocalBranch('todelete-merged');
+    fs.writeFileSync(path.join(testRepoPath, 'todelete.ts'), 'export {};\n');
+    await g.add('.');
+    await g.commit('feat: todelete merged');
+    await g.checkout('main');
+    await g.merge(['todelete-merged', '--ff']);
+
+    await window.reload();
+    await window.waitForLoadState('domcontentloaded');
+
+    const branch = window
+      .locator('.tree-item', { hasText: 'todelete-merged' })
+      .first();
+    await expect(branch).toBeVisible({ timeout: 10_000 });
+    await branch.click({ button: 'right' });
+
+    const deleteItem = window.locator('.context-item', { hasText: /^Delete / });
+    await expect(deleteItem).toBeVisible();
+    await deleteItem.click();
+
+    await window.locator('[data-testid="delete-branch-submit"]').click();
+
+    await expect(
+      window.locator('.tree-item', { hasText: 'todelete-merged' }),
+    ).toHaveCount(0, { timeout: 10_000 });
+  });
+
+  test('current branch shows disabled Delete option', async ({ window }) => {
+    const currentBranch = window.locator('.tree-item.current-branch').first();
+    await expect(currentBranch).toBeVisible({ timeout: 10_000 });
+    await currentBranch.click({ button: 'right' });
+
+    const deleteItem = window.locator('.context-item', { hasText: /^Delete / });
+    await expect(deleteItem).toBeVisible();
+    await expect(deleteItem).toBeDisabled();
+  });
+
+  test('force delete checkbox unblocks unmerged branch', async ({
+    window,
+    testRepoPath,
+  }) => {
+    await cleanWorkingTree(testRepoPath);
+    // Create an unmerged branch from main.
+    const simpleGit = (await import('simple-git')).default;
+    const g = simpleGit(testRepoPath);
+    await g.checkoutLocalBranch('throwaway-unmerged');
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    fs.writeFileSync(path.join(testRepoPath, 'orphan.ts'), 'export {};\n');
+    await g.add('.');
+    await g.commit('feat: orphan commit');
+    await g.checkout('main');
+
+    await window.reload();
+    await window.waitForLoadState('domcontentloaded');
+
+    const branch = window
+      .locator('.tree-item', { hasText: 'throwaway-unmerged' })
+      .first();
+    await expect(branch).toBeVisible({ timeout: 10_000 });
+    await branch.click({ button: 'right' });
+    await window.locator('.context-item', { hasText: /^Delete / }).click();
+
+    // Toggle force, then submit.
+    await window.locator('[data-testid="delete-branch-force"]').check();
+    await window.locator('[data-testid="delete-branch-submit"]').click();
+
+    await expect(
+      window.locator('.tree-item', { hasText: 'throwaway-unmerged' }),
+    ).toHaveCount(0, { timeout: 10_000 });
+  });
+});
+
+test.describe('Search view', () => {
+  test('switching to Search shows the search input', async ({ window }) => {
+    await window.locator('.nav-item', { hasText: 'Search' }).first().click();
+    await expect(window.locator('[data-testid="search-query"]')).toBeVisible({
+      timeout: 5_000,
+    });
+  });
+
+  test('typing query renders matching commits', async ({ window }) => {
+    await window.locator('.nav-item', { hasText: 'Search' }).first().click();
+    const input = window.locator('[data-testid="search-query"]');
+    await input.fill('auth');
+
+    // Debounced search runs after ~300ms.
+    await expect(window.locator('[data-testid="search-results"]')).toBeVisible({
+      timeout: 5_000,
+    });
+    const rows = window.locator('[data-testid="search-result-row"]');
+    expect(await rows.count()).toBeGreaterThan(0);
+  });
+
+  test('clicking a search result loads the file diff', async ({ window }) => {
+    await window.locator('.nav-item', { hasText: 'Search' }).first().click();
+    await window.locator('[data-testid="search-query"]').fill('auth');
+
+    await expect(window.locator('[data-testid="search-results"]')).toBeVisible({
+      timeout: 5_000,
+    });
+
+    await window.locator('[data-testid="search-result-row"]').first().click();
+
+    // Bottom panel must show at least one changed file.
+    await expect(window.locator('.file-row').first()).toBeVisible({
+      timeout: 10_000,
+    });
+  });
+
+  test('non-hex SHA query returns empty result without error', async ({
+    window,
+  }) => {
+    await window.locator('.nav-item', { hasText: 'Search' }).first().click();
+    await window.locator('[data-testid="search-mode"]').selectOption('sha');
+    await window.locator('[data-testid="search-query"]').fill('not-a-sha');
+
+    await expect(window.locator('.empty-state')).toBeVisible({
+      timeout: 5_000,
+    });
+  });
 });

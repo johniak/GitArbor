@@ -33,6 +33,15 @@ export interface OperationInProgress {
 
 export type ConflictStrategy = 'mine' | 'theirs';
 
+export type SearchMode = 'message' | 'author' | 'sha' | 'file-content';
+
+export interface SearchCommitsRequest {
+  query: string;
+  mode: SearchMode;
+  since?: string;
+  until?: string;
+}
+
 /** IPC channel names — single source of truth for main + renderer */
 export const IPC = {
   GIT_GET_BRANCHES: 'git:get-branches',
@@ -76,6 +85,9 @@ export const IPC = {
   GIT_MARK_RESOLVED: 'git:mark-resolved',
   GIT_MARK_UNRESOLVED: 'git:mark-unresolved',
   GIT_ABORT_OPERATION: 'git:abort-operation',
+  GIT_CONTINUE_OPERATION: 'git:continue-operation',
+  GIT_DELETE_BRANCH: 'git:delete-branch',
+  GIT_SEARCH_COMMITS: 'git:search-commits',
   GIT_ARCHIVE: 'git:archive',
   GIT_CREATE_PATCH_FROM_COMMIT: 'git:create-patch-from-commit',
   GIT_PUSH_REVISION: 'git:push-revision',
@@ -152,6 +164,8 @@ export interface GitAPI {
   getConfig(key: string): Promise<string>;
   checkout(target: string): Promise<void>;
   createBranch(name: string, startPoint?: string): Promise<void>;
+  deleteBranch(name: string, force: boolean): Promise<{ error?: string }>;
+  searchCommits(request: SearchCommitsRequest): Promise<Commit[]>;
   createTag(
     name: string,
     commit: string,
@@ -181,6 +195,7 @@ export interface GitAPI {
   markResolved(filePath: string): Promise<{ error?: string }>;
   markUnresolved(filePath: string): Promise<{ error?: string }>;
   abortOperation(): Promise<{ error?: string }>;
+  continueOperation(): Promise<{ error?: string }>;
   archiveCommit(
     hash: string,
     defaultName: string,

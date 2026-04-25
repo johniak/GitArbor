@@ -294,6 +294,19 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
+  IPC.GIT_DELETE_BRANCH,
+  async (_event, { name, force }: { name: string; force: boolean }) => {
+    const res = await getGitService().deleteBranch(name, force);
+    notifyRepoChanged();
+    return res;
+  },
+);
+
+ipcMain.handle(IPC.GIT_SEARCH_COMMITS, (_event, opts) =>
+  getGitService().searchCommits(opts),
+);
+
+ipcMain.handle(
   IPC.GIT_CREATE_TAG,
   (
     _event,
@@ -466,6 +479,12 @@ ipcMain.handle(IPC.GIT_MARK_UNRESOLVED, async (_event, filePath: string) => {
 
 ipcMain.handle(IPC.GIT_ABORT_OPERATION, async () => {
   const res = await getGitService().abortOperation();
+  notifyRepoChanged();
+  return res;
+});
+
+ipcMain.handle(IPC.GIT_CONTINUE_OPERATION, async () => {
+  const res = await getGitService().continueOperation();
   notifyRepoChanged();
   return res;
 });

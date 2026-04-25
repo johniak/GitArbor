@@ -1169,6 +1169,139 @@ describe('GitService', () => {
     });
   });
 
+  describe('searchCommits', () => {
+    function makeRawWithLog() {
+      // Single commit log line in NUL-separated format expected by parser.
+      return [
+        'aaa111',
+        'aaa',
+        'parent1',
+        'fix: thing',
+        'john',
+        'j@e.com',
+        '2026-04-09T12:00:00+00:00',
+        'HEAD -> main',
+      ].join('\x00');
+    }
+
+    it('returns empty array for blank query without invoking git', async () => {
+      const rawFn = vi.fn().mockResolvedValue('');
+      const mockGit = createMockGit({ raw: rawFn });
+      const result = await new GitService(mockGit).searchCommits({
+        query: '',
+        mode: 'message',
+      });
+      expect(result).toEqual([]);
+      expect(rawFn).not.toHaveBeenCalled();
+    });
+
+    it('uses --grep -i for message mode', async () => {
+      const rawFn = vi.fn().mockResolvedValue(makeRawWithLog());
+      const mockGit = createMockGit({ raw: rawFn });
+      await new GitService(mockGit).searchCommits({
+        query: 'fix',
+        mode: 'message',
+      });
+      const args = rawFn.mock.calls[0][0] as string[];
+      expect(args).toContain('--all');
+      expect(args).toContain('-i');
+      expect(args).toContain('--grep=fix');
+    });
+
+    it('uses --author for author mode', async () => {
+      const rawFn = vi.fn().mockResolvedValue(makeRawWithLog());
+      const mockGit = createMockGit({ raw: rawFn });
+      await new GitService(mockGit).searchCommits({
+        query: 'jan',
+        mode: 'author',
+      });
+      const args = rawFn.mock.calls[0][0] as string[];
+      expect(args).toContain('--author=jan');
+    });
+
+    it('uses pickaxe -S for file-content mode', async () => {
+      const rawFn = vi.fn().mockResolvedValue(makeRawWithLog());
+      const mockGit = createMockGit({ raw: rawFn });
+      await new GitService(mockGit).searchCommits({
+        query: 'TODO',
+        mode: 'file-content',
+      });
+      const args = rawFn.mock.calls[0][0] as string[];
+      expect(args).toContain('-STODO');
+    });
+
+    it('rejects non-hex query for sha mode without invoking git', async () => {
+      const rawFn = vi.fn().mockResolvedValue('');
+      const mockGit = createMockGit({ raw: rawFn });
+      const result = await new GitService(mockGit).searchCommits({
+        query: 'not-a-sha',
+        mode: 'sha',
+      });
+      expect(result).toEqual([]);
+      expect(rawFn).not.toHaveBeenCalled();
+    });
+
+    it('passes --since / --until when provided', async () => {
+      const rawFn = vi.fn().mockResolvedValue(makeRawWithLog());
+      const mockGit = createMockGit({ raw: rawFn });
+      await new GitService(mockGit).searchCommits({
+        query: 'fix',
+        mode: 'message',
+        since: '2026-01-01',
+        until: '2026-04-01',
+      });
+      const args = rawFn.mock.calls[0][0] as string[];
+      expect(args).toContain('--since=2026-01-01');
+      expect(args).toContain('--until=2026-04-01');
+    });
+
+    it('parses commit results from log output', async () => {
+      const rawFn = vi.fn().mockResolvedValue(makeRawWithLog());
+      const mockGit = createMockGit({ raw: rawFn });
+      const result = await new GitService(mockGit).searchCommits({
+        query: 'fix',
+        mode: 'message',
+      });
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        hash: 'aaa111',
+        hashShort: 'aaa',
+        message: 'fix: thing',
+        authorName: 'john',
+      });
+    });
+  });
+
+  describe('deleteBranch', () => {
+    it('runs branch -d for soft delete', async () => {
+      const rawFn = vi.fn().mockResolvedValue('');
+      const mockGit = createMockGit({ raw: rawFn });
+      const result = await new GitService(mockGit).deleteBranch(
+        'feat/foo',
+        false,
+      );
+      expect(result).toEqual({});
+      expect(rawFn).toHaveBeenCalledWith(['branch', '-d', 'feat/foo']);
+    });
+
+    it('runs branch -D for force delete', async () => {
+      const rawFn = vi.fn().mockResolvedValue('');
+      const mockGit = createMockGit({ raw: rawFn });
+      await new GitService(mockGit).deleteBranch('feat/foo', true);
+      expect(rawFn).toHaveBeenCalledWith(['branch', '-D', 'feat/foo']);
+    });
+
+    it('returns error when git refuses (e.g. unmerged branch)', async () => {
+      const rawFn = vi.fn().mockRejectedValue(new Error('not fully merged'));
+      const mockGit = createMockGit({ raw: rawFn });
+      const result = await new GitService(mockGit).deleteBranch(
+        'feat/foo',
+        false,
+      );
+      expect(result.error).toContain('not fully merged');
+    });
+  });
+
   describe('conflict resolution', () => {
     // revparse returns ".git" for --git-dir queries; getGitDir then anchors
     // it to repo root via getRepoRoot (which also calls revparse).
@@ -1349,6 +1482,63 @@ describe('GitService', () => {
           '--',
           'foo.ts',
         ]);
+      });
+    });
+
+    describe('continueOperation', () => {
+      it('runs commit --no-edit during merge when conflicts cleared', async () => {
+        existsSpy.mockImplementation(existsSwitch(['MERGE_HEAD']));
+        const rawFn = vi.fn().mockResolvedValue('');
+        const statusFn = vi.fn().mockResolvedValue({ conflicted: [] });
+        const mockGit = createMockGit({
+          revparse: makeRevparse(),
+          status: statusFn,
+          raw: rawFn,
+        } as unknown as Partial<SimpleGit>);
+        const result = await new GitService(mockGit).continueOperation();
+        expect(result).toEqual({});
+        expect(rawFn).toHaveBeenCalledWith(['commit', '--no-edit']);
+      });
+
+      it('runs rebase --continue with editor disabled', async () => {
+        existsSpy.mockImplementation(existsSwitch(['rebase-merge']));
+        const rawFn = vi.fn().mockResolvedValue('');
+        const envFn = vi.fn();
+        const chained = { env: envFn, raw: rawFn };
+        envFn.mockReturnValue(chained);
+        const statusFn = vi.fn().mockResolvedValue({ conflicted: [] });
+        const mockGit = createMockGit({
+          revparse: makeRevparse(),
+          status: statusFn,
+          env: envFn,
+          raw: rawFn,
+        } as unknown as Partial<SimpleGit>);
+        await new GitService(mockGit).continueOperation();
+        expect(envFn).toHaveBeenCalledWith('GIT_EDITOR', ':');
+        expect(envFn).toHaveBeenCalledWith('GIT_SEQUENCE_EDITOR', ':');
+        expect(rawFn).toHaveBeenCalledWith(['rebase', '--continue']);
+      });
+
+      it('refuses with error when conflicts still remain', async () => {
+        existsSpy.mockImplementation(existsSwitch(['MERGE_HEAD']));
+        const statusFn = vi
+          .fn()
+          .mockResolvedValue({ conflicted: ['a.ts', 'b.ts'] });
+        const mockGit = createMockGit({
+          revparse: makeRevparse(),
+          status: statusFn,
+        } as unknown as Partial<SimpleGit>);
+        const result = await new GitService(mockGit).continueOperation();
+        expect(result.error).toContain('2 unresolved');
+      });
+
+      it('returns error when no operation in progress', async () => {
+        existsSpy.mockImplementation(() => false);
+        const mockGit = createMockGit({
+          revparse: makeRevparse(),
+        } as unknown as Partial<SimpleGit>);
+        const result = await new GitService(mockGit).continueOperation();
+        expect(result.error).toBe('No operation in progress');
       });
     });
 

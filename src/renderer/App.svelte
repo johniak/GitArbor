@@ -23,6 +23,8 @@
   import CherryPickDialog from './components/CherryPickDialog.svelte';
   import PushRevisionDialog from './components/PushRevisionDialog.svelte';
   import ConflictBanner from './components/ConflictBanner.svelte';
+  import DeleteBranchDialog from './components/DeleteBranchDialog.svelte';
+  import SearchView from './components/SearchView.svelte';
   import type { OperationInProgress } from '../shared/ipc';
   import { mockSidebar, mockCommits, mockFiles, mockDiff } from './mock-data';
   import type {
@@ -121,6 +123,7 @@
     hash: string;
     shortHash: string;
   } | null>(null);
+  let deleteBranchDialog = $state<{ branch: string } | null>(null);
   let contextMenu = $state<{
     hash: string;
     subject: string;
@@ -1153,6 +1156,55 @@
     await loadAllData();
   }
 
+  async function handleSearchSelect(commit: Commit) {
+    selectedCommit = commit.hashShort;
+    isWorkingChangesSelected = false;
+    selectedCommitFullHash = commit.hash;
+    selectedCommitData = commit;
+    try {
+      const [files, body] = await Promise.all([
+        window.electronAPI.git.getCommitFiles(commit.hash),
+        window.electronAPI.git.getCommitBody(commit.hash),
+      ]);
+      changedFiles = files;
+      commitBody = body;
+      const firstFile = files[0];
+      if (firstFile) {
+        selectedFile = firstFile.path;
+        currentDiff = await window.electronAPI.git.getFileDiff(
+          commit.hash,
+          firstFile.path,
+        );
+      } else {
+        selectedFile = null;
+        currentDiff = null;
+      }
+    } catch (e) {
+      console.error('[search] load commit failed:', e);
+    }
+  }
+
+  async function handleDeleteBranch(name: string, force: boolean) {
+    deleteBranchDialog = null;
+    const res = await window.electronAPI.git.deleteBranch(name, force);
+    if (res?.error) {
+      showError('Delete branch failed', res.error);
+      return;
+    }
+    await loadAllData();
+  }
+
+  async function handleContinueOperation() {
+    const res = await withProgress('Continuing...', () =>
+      window.electronAPI.git.continueOperation(),
+    );
+    if (res?.error) {
+      showError('Continue failed', res.error);
+      return;
+    }
+    await loadAllData();
+  }
+
   async function handleCopyShaToClipboard(hash: string) {
     try {
       await navigator.clipboard.writeText(hash);
@@ -1178,6 +1230,7 @@
         (f) => f.status === 'U',
       ).length}
       onAbort={handleAbortOperation}
+      onContinue={handleContinueOperation}
     />
   {/if}
 
@@ -1194,6 +1247,7 @@
         onApplyStash={handleApplyStashRequest}
         onMergeBranch={handleMergeBranch}
         onRebaseBranch={handleRebaseBranch}
+        onDeleteBranch={(name) => (deleteBranchDialog = { branch: name })}
         onNewBranch={() => (branchDialog = {})}
         onScrollToBranch={handleScrollToBranch}
       />
@@ -1250,6 +1304,38 @@
             onCommit={handleCommit}
             onCancel={handleCancelCommit}
           />
+        </div>
+      {:else if activeView === 'search'}
+        <!-- Search view: filter bar + result list (top) reuses bottom file/diff panes -->
+        <div class="commit-log-panel" style="height:{commitLogHeight}px">
+          <SearchView
+            selectedHash={selectedCommit}
+            onSelect={handleSearchSelect}
+          />
+        </div>
+
+        <Splitter direction="vertical" onResize={resizeCommitLog} />
+
+        <div class="bottom-area">
+          <div class="filelist-panel" style="width:{fileListWidth}px">
+            <FileList
+              files={changedFiles}
+              {workingStatus}
+              isWorkingChanges={false}
+              selectedPath={selectedFile}
+              selectedCommit={selectedCommitData}
+              {commitBody}
+              onSelectFile={handleSelectFile}
+              onSelectParent={handleSelectParent}
+              onOpenFile={handleOpenFile}
+            />
+          </div>
+
+          <Splitter direction="horizontal" onResize={resizeFileList} />
+
+          <div class="diff-panel">
+            <DiffViewer diff={currentDiff} />
+          </div>
         </div>
       {:else}
         <!-- History view -->
@@ -1491,6 +1577,16 @@
     onConfirm={(opts) =>
       pushRevisionDialog && handlePushRevision(pushRevisionDialog.hash, opts)}
     onCancel={() => (pushRevisionDialog = null)}
+  />
+{/if}
+
+{#if deleteBranchDialog}
+  <DeleteBranchDialog
+    branch={deleteBranchDialog.branch}
+    onConfirm={(force) =>
+      deleteBranchDialog &&
+      handleDeleteBranch(deleteBranchDialog.branch, force)}
+    onCancel={() => (deleteBranchDialog = null)}
   />
 {/if}
 

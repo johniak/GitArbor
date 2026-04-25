@@ -155,6 +155,80 @@ export class GitService {
       });
   }
 
+  /**
+   * Filtered log search across all branches/remotes/tags. Mode picks the
+   * underlying git filter:
+   *
+   * - message: `--grep=<query>` (case-insensitive)
+   * - author:  `--author=<query>`
+   * - sha:     forwards `<query>` as a revision range (matches commits whose
+   *            hash starts with the given prefix). Returns [] if invalid.
+   * - file-content: `-S<query>` (pickaxe — commits adding/removing the term)
+   *
+   * `since` / `until` are ISO date strings, optional. Limits to 500 results
+   * to keep UI snappy on huge repos.
+   */
+  async searchCommits(opts: {
+    query: string;
+    mode: 'message' | 'author' | 'sha' | 'file-content';
+    since?: string;
+    until?: string;
+  }): Promise<Commit[]> {
+    const { query, mode, since, until } = opts;
+    if (!query.trim()) return [];
+
+    const keys = Object.keys(COMMIT_FORMAT) as (keyof typeof COMMIT_FORMAT)[];
+    const formatStr = keys.map((k) => COMMIT_FORMAT[k]).join('%x00');
+
+    const args = ['log', '--max-count=500', `--format=${formatStr}`];
+    if (since) args.push(`--since=${since}`);
+    if (until) args.push(`--until=${until}`);
+
+    if (mode === 'sha') {
+      // sha mode: match commits whose hash starts with the query.
+      // Bail early on obviously invalid input — git would error out anyway.
+      if (!/^[0-9a-fA-F]+$/.test(query.trim())) return [];
+      args.push('--all', '--no-walk', query.trim());
+    } else {
+      args.push('--all');
+      if (mode === 'message') args.push('-i', `--grep=${query}`);
+      else if (mode === 'author') args.push(`--author=${query}`);
+      else if (mode === 'file-content') args.push(`-S${query}`);
+    }
+
+    let raw: string;
+    try {
+      raw = await this.git.raw(args);
+    } catch {
+      return [];
+    }
+    if (!raw.trim()) return [];
+
+    return raw
+      .trim()
+      .split('\n')
+      .map((line) => {
+        const parts = line.split('\x00');
+        const record: Record<string, string> = {};
+        keys.forEach((key, i) => {
+          record[key] = parts[i] ?? '';
+        });
+        return {
+          hash: record.hash,
+          hashShort: record.abbrevHash,
+          message: record.message,
+          authorName: record.authorName,
+          authorEmail: record.authorEmail,
+          date: record.date,
+          dateRelative: relativeDate(record.date),
+          parents: record.parents
+            ? record.parents.split(' ').filter(Boolean)
+            : [],
+          refs: record.refs ? record.refs.split(', ').filter(Boolean) : [],
+        };
+      });
+  }
+
   async getCommitBody(hash: string): Promise<string> {
     const raw = await this.git.raw(['log', '-1', '--format=%b', hash]);
     return raw.trim();
@@ -704,6 +778,49 @@ export class GitService {
     }
   }
 
+  /**
+   * Finalise the in-progress operation once all conflicts have been resolved.
+   *
+   * - merge: `git commit --no-edit` (uses prefilled .git/MERGE_MSG)
+   * - rebase / cherry-pick / revert: `<op> --continue` with GIT_EDITOR=":"
+   *   so git doesn't block waiting for an editor on the commit message.
+   *
+   * Refuses to run if any conflicts are still unresolved — caller surfaces
+   * the error string.
+   */
+  async continueOperation(): Promise<{ error?: string }> {
+    const op = await this.getOperationInProgress();
+    if (!op) return { error: 'No operation in progress' };
+
+    const status = await this.git.status();
+    if (status.conflicted.length > 0) {
+      return {
+        error: `${status.conflicted.length} unresolved conflict(s) remain`,
+      };
+    }
+
+    try {
+      if (op.kind === 'merge') {
+        await this.git.raw(['commit', '--no-edit']);
+      } else {
+        const subcommand =
+          op.kind === 'rebase'
+            ? 'rebase'
+            : op.kind === 'cherry-pick'
+              ? 'cherry-pick'
+              : 'revert';
+        await this.git
+          .env('GIT_EDITOR', ':')
+          .env('GIT_SEQUENCE_EDITOR', ':')
+          .raw([subcommand, '--continue']);
+      }
+      return {};
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { error: `Continue ${op.kind} failed: ${msg}` };
+    }
+  }
+
   async archiveCommit(
     hash: string,
     filePath: string,
@@ -732,6 +849,24 @@ export class GitService {
     const args = ['branch', name];
     if (startPoint) args.push(startPoint);
     await this.git.raw(args);
+  }
+
+  /**
+   * Delete a local branch. Soft (`-d`) refuses if the branch isn't merged into
+   * upstream/HEAD; force (`-D`) deletes regardless. Errors surface as `error`
+   * field instead of throwing so the renderer can show them in a toast.
+   */
+  async deleteBranch(
+    name: string,
+    force: boolean,
+  ): Promise<{ error?: string }> {
+    try {
+      await this.git.raw(['branch', force ? '-D' : '-d', name]);
+      return {};
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { error: `Delete branch ${name} failed: ${msg}` };
+    }
   }
 
   async createTag(

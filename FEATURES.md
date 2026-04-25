@@ -98,10 +98,10 @@ GitArbor feature matrix. `[x]` = done, `[ ]` = planned / missing, `[~]` = partia
 - [x] HEAD dot highlight with halo stroke
 - [x] Merge commits show changed files (diff vs first parent)
 - [x] Selection survives alt-tab / window refocus
-- [ ] Search commits (by message / author / SHA / file content)
+- [x] Search commits (dedicated Search view; by message / author / SHA / file content; date range filter)
 - [ ] Filter by author
 - [ ] Filter by branch / tag
-- [ ] Filter by date range
+- [x] Filter by date range (in Search view, From / To)
 - [ ] File blame / annotate (per-line authorship)
 - [ ] File history (`log --follow <path>`)
 - [ ] Compare two commits
@@ -121,9 +121,9 @@ GitArbor feature matrix. `[x]` = done, `[ ]` = planned / missing, `[~]` = partia
 - [x] Create branch (from HEAD or a specific commit)
 - [x] Auto-checkout after create (optional)
 - [x] Branch from commit context menu (pre-filled start point)
-- [x] Context menu: Merge / Rebase / New branch
+- [x] Context menu: Merge / Rebase / New branch / Delete
+- [x] Delete branch (soft + `-D` force) — confirm dialog with force toggle
 - [ ] Rename branch
-- [ ] Delete branch (soft + `-D` force)
 - [ ] Multi-select delete branches
 - [ ] Set upstream / change tracked remote
 - [ ] Compare two branches (diff range)
@@ -164,10 +164,10 @@ GitArbor feature matrix. `[x]` = done, `[ ]` = planned / missing, `[~]` = partia
 - [x] Per-file resolve: ours / theirs (auto-flipped during rebase)
 - [x] Per-file mark resolved / mark unresolved
 - [x] Abort merge (`git merge --abort`)
+- [x] Continue merge after resolve (Commit button in conflict banner)
 - [ ] Fast-forward only / No-ff / Squash toggle
 - [ ] Edit merge commit message
 - [ ] Auto-commit after successful merge (option)
-- [ ] Continue merge after resolve (UI)
 - [ ] Choose parent when merging multi-parent
 
 ## 9. Rebase
@@ -176,8 +176,8 @@ GitArbor feature matrix. `[x]` = done, `[ ]` = planned / missing, `[~]` = partia
 - [x] Rebase from commit context menu
 - [x] Conflict detection
 - [x] Abort rebase (`git rebase --abort`)
+- [x] Continue rebase (`git rebase --continue` via conflict banner)
 - [ ] Interactive rebase (pick / reword / squash / fixup / drop / edit / reorder)
-- [ ] Continue rebase (`git rebase --continue`)
 - [ ] Skip commit in rebase
 - [ ] Rebase `--onto` (three-argument)
 - [ ] Autosquash (`fixup!` / `squash!` support)
