@@ -125,8 +125,12 @@ export class RepoManager {
     // Validate path exists
     if (!fs.existsSync(repoPath)) return false;
 
-    // Validate it's a git repo
-    const git = simpleGit(repoPath);
+    // Validate it's a git repo. allowUnsafeEditor lets us inject GIT_EDITOR
+    // for interactive rebase resume — the editor script we point to is our
+    // own file under userData/interactive-rebase.
+    const git = simpleGit(repoPath, {
+      unsafe: { allowUnsafeEditor: true },
+    });
     const isRepo = await git.checkIsRepo();
     if (!isRepo) return false;
 

@@ -24,6 +24,12 @@
   import PushRevisionDialog from './components/PushRevisionDialog.svelte';
   import ConflictBanner from './components/ConflictBanner.svelte';
   import DeleteBranchDialog from './components/DeleteBranchDialog.svelte';
+  import InteractiveRebaseDialog from './components/InteractiveRebaseDialog.svelte';
+  import type {
+    RebasePlan,
+    RebaseStep,
+    RunInteractiveRebaseResult,
+  } from '../shared/rebase-types';
   import SearchView from './components/SearchView.svelte';
   import type { OperationInProgress } from '../shared/ipc';
   import { mockSidebar, mockCommits, mockFiles, mockDiff } from './mock-data';
@@ -196,6 +202,12 @@
     shortHash: string;
   } | null>(null);
   let deleteBranchDialog = $state<{ branch: string } | null>(null);
+  let interactiveRebaseDialog = $state<{
+    baseHash: string;
+    baseShortHash: string;
+    baseSubject: string;
+    initialSteps: RebaseStep[];
+  } | null>(null);
   let contextMenu = $state<{
     hash: string;
     subject: string;
@@ -911,6 +923,54 @@
     await loadAllData();
   }
 
+  async function handleInteractiveRebase(
+    hash: string,
+    shortHash: string,
+    subject: string,
+  ) {
+    try {
+      const initialSteps = await window.electronAPI.git.getRebasePlan(hash);
+      if (initialSteps.length === 0) {
+        showInfo(
+          'Nothing to rebase',
+          'No commits found between this commit and HEAD.',
+        );
+        return;
+      }
+      interactiveRebaseDialog = {
+        baseHash: hash,
+        baseShortHash: shortHash,
+        baseSubject: subject,
+        initialSteps,
+      };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      showError('Could not load commits', msg);
+    }
+  }
+
+  async function handleInteractiveRebaseConfirm(
+    plan: RebasePlan,
+  ): Promise<RunInteractiveRebaseResult> {
+    const result = await withProgress('Running interactive rebase…', () =>
+      window.electronAPI.git.runInteractiveRebase(plan),
+    );
+    if (result.error) {
+      // Keep dialog open so the user sees the error inline.
+      return result;
+    }
+    interactiveRebaseDialog = null;
+    if (result.conflicts.length > 0) {
+      showError(
+        'Rebase Conflicts',
+        'The rebase paused on conflicts. Resolve them and click Continue.',
+        result.conflicts.join('\n'),
+      );
+    }
+    await loadAllData();
+    return result;
+  }
+
   async function handleOpenFile(filePath: string) {
     try {
       await window.electronAPI.git.openFile(filePath);
@@ -1562,6 +1622,11 @@
         onSelect: () => handleMergeBranch(menu.hash),
       },
       { label: 'Rebase…', onSelect: () => handleRebaseBranch(menu.hash) },
+      {
+        label: 'Rebase children of this commit interactively…',
+        onSelect: () =>
+          handleInteractiveRebase(menu.hash, shortHash, menu.subject),
+      },
       { separator: true },
       {
         label: 'Tag…',
@@ -1692,6 +1757,17 @@
       deleteBranchDialog &&
       handleDeleteBranch(deleteBranchDialog.branch, force)}
     onCancel={() => (deleteBranchDialog = null)}
+  />
+{/if}
+
+{#if interactiveRebaseDialog}
+  <InteractiveRebaseDialog
+    baseHash={interactiveRebaseDialog.baseHash}
+    baseShortHash={interactiveRebaseDialog.baseShortHash}
+    baseSubject={interactiveRebaseDialog.baseSubject}
+    initialSteps={interactiveRebaseDialog.initialSteps}
+    onConfirm={handleInteractiveRebaseConfirm}
+    onCancel={() => (interactiveRebaseDialog = null)}
   />
 {/if}
 

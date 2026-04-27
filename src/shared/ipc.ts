@@ -11,6 +11,18 @@ import type {
 import type { DeepPartial } from './deep-merge';
 import type { RepoSettings } from './repo-settings-types';
 import type { AppSettings } from './app-settings-types';
+import type {
+  RebasePlan,
+  RebaseStep,
+  RunInteractiveRebaseResult,
+} from './rebase-types';
+
+export type {
+  RebaseAction,
+  RebasePlan,
+  RebaseStep,
+  RunInteractiveRebaseResult,
+} from './rebase-types';
 
 export type { DeepPartial } from './deep-merge';
 export type { RepoSettings } from './repo-settings-types';
@@ -86,6 +98,8 @@ export const IPC = {
   GIT_MARK_UNRESOLVED: 'git:mark-unresolved',
   GIT_ABORT_OPERATION: 'git:abort-operation',
   GIT_CONTINUE_OPERATION: 'git:continue-operation',
+  GIT_GET_REBASE_PLAN: 'git:get-rebase-plan',
+  GIT_RUN_INTERACTIVE_REBASE: 'git:run-interactive-rebase',
   GIT_DELETE_BRANCH: 'git:delete-branch',
   GIT_SEARCH_COMMITS: 'git:search-commits',
   GIT_ARCHIVE: 'git:archive',
@@ -204,6 +218,8 @@ export interface GitAPI {
   markUnresolved(filePath: string): Promise<{ error?: string }>;
   abortOperation(): Promise<{ error?: string }>;
   continueOperation(): Promise<{ error?: string }>;
+  getRebasePlan(baseHash: string): Promise<RebaseStep[]>;
+  runInteractiveRebase(plan: RebasePlan): Promise<RunInteractiveRebaseResult>;
   archiveCommit(
     hash: string,
     defaultName: string,

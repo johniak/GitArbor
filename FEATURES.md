@@ -179,7 +179,7 @@ GitArbor feature matrix. `[x]` = done, `[ ]` = planned / missing, `[~]` = partia
 - [x] Conflict detection
 - [x] Abort rebase (`git rebase --abort`)
 - [x] Continue rebase (`git rebase --continue` via conflict banner)
-- [ ] Interactive rebase (pick / reword / squash / fixup / drop / edit / reorder)
+- [x] Interactive rebase (pick / drop / reword / edit / squash / reorder via ▲▼) — modal mirrors SourceTree's "Reorder and amend commits", reuses DiffViewer for read-only per-commit preview; conflicts surface through the existing ConflictBanner + Continue/Abort flow
 - [ ] Skip commit in rebase
 - [ ] Rebase `--onto` (three-argument)
 - [ ] Autosquash (`fixup!` / `squash!` support)

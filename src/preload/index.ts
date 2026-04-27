@@ -133,6 +133,10 @@ const api: ElectronAPI = {
       ipcRenderer.invoke(IPC.GIT_MARK_UNRESOLVED, filePath),
     abortOperation: () => ipcRenderer.invoke(IPC.GIT_ABORT_OPERATION),
     continueOperation: () => ipcRenderer.invoke(IPC.GIT_CONTINUE_OPERATION),
+    getRebasePlan: (baseHash: string) =>
+      ipcRenderer.invoke(IPC.GIT_GET_REBASE_PLAN, baseHash),
+    runInteractiveRebase: (plan: import('../shared/rebase-types').RebasePlan) =>
+      ipcRenderer.invoke(IPC.GIT_RUN_INTERACTIVE_REBASE, plan),
     archiveCommit: (hash: string, defaultName: string) =>
       ipcRenderer.invoke(IPC.GIT_ARCHIVE, { hash, defaultName }),
     createPatchFromCommit: (hash: string, defaultName: string) =>

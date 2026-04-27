@@ -771,7 +771,7 @@ export class GitService {
     }
   }
 
-  async abortOperation(): Promise<{ error?: string }> {
+  async abortOperation(onCleanup?: () => void): Promise<{ error?: string }> {
     const op = await this.getOperationInProgress();
     if (!op) return { error: 'No operation in progress' };
     const subcommand =
@@ -784,6 +784,7 @@ export class GitService {
             : 'revert';
     try {
       await this.git.raw([subcommand, '--abort']);
+      onCleanup?.();
       return {};
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -801,7 +802,9 @@ export class GitService {
    * Refuses to run if any conflicts are still unresolved — caller surfaces
    * the error string.
    */
-  async continueOperation(): Promise<{ error?: string }> {
+  async continueOperation(
+    envOverrides?: Record<string, string>,
+  ): Promise<{ error?: string }> {
     const op = await this.getOperationInProgress();
     if (!op) return { error: 'No operation in progress' };
 
@@ -822,10 +825,16 @@ export class GitService {
             : op.kind === 'cherry-pick'
               ? 'cherry-pick'
               : 'revert';
-        await this.git
-          .env('GIT_EDITOR', ':')
-          .env('GIT_SEQUENCE_EDITOR', ':')
-          .raw([subcommand, '--continue']);
+        // Default to no-op editors so git doesn't block on a prompt. When an
+        // interactive rebase is in progress the caller passes our editor
+        // script in envOverrides so reword/squash messages still flow.
+        let g = this.git.env('GIT_EDITOR', ':').env('GIT_SEQUENCE_EDITOR', ':');
+        if (envOverrides) {
+          for (const [k, v] of Object.entries(envOverrides)) {
+            g = g.env(k, v);
+          }
+        }
+        await g.raw([subcommand, '--continue']);
       }
       return {};
     } catch (e) {

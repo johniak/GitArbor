@@ -18,6 +18,13 @@ import {
   loadAppSettings,
   updateAppSettings,
 } from './app-settings';
+import {
+  cleanupInteractiveRebaseState,
+  configureInteractiveRebase,
+  interactiveRebaseContinueEnv,
+  prepareRebasePlan,
+  runInteractiveRebase,
+} from './interactive-rebase';
 import { IPC } from '../shared/ipc';
 import type { DeepPartial, RepoSettings, AppSettings } from '../shared/ipc';
 import { DEFAULT_REPO_SETTINGS } from '../shared/ipc';
@@ -27,7 +34,9 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 
 const repoPath = process.env.REPO_PATH || process.cwd();
 
-const defaultGit = new GitService(simpleGit(repoPath));
+const defaultGit = new GitService(
+  simpleGit(repoPath, { unsafe: { allowUnsafeEditor: true } }),
+);
 let repoManager: RepoManager | null = null;
 let mainWindow: BrowserWindow | null = null;
 let repoBrowserWindow: BrowserWindow | null = null;
@@ -499,16 +508,45 @@ ipcMain.handle(IPC.GIT_MARK_UNRESOLVED, async (_event, filePath: string) => {
 });
 
 ipcMain.handle(IPC.GIT_ABORT_OPERATION, async () => {
-  const res = await getGitService().abortOperation();
+  const repoPath = repoManager?.getCurrentPath();
+  const res = await getGitService().abortOperation(() => {
+    if (repoPath) cleanupInteractiveRebaseState(repoPath);
+  });
   notifyRepoChanged();
   return res;
 });
 
 ipcMain.handle(IPC.GIT_CONTINUE_OPERATION, async () => {
-  const res = await getGitService().continueOperation();
+  const repoPath = repoManager?.getCurrentPath();
+  const env = repoPath ? interactiveRebaseContinueEnv(repoPath) : null;
+  const res = await getGitService().continueOperation(env ?? undefined);
+  // If continue completed cleanly and no rebase is left, drop the state.
+  if (!res.error && repoPath) {
+    const stillRunning = await getGitService().getOperationInProgress();
+    if (!stillRunning) cleanupInteractiveRebaseState(repoPath);
+  }
   notifyRepoChanged();
   return res;
 });
+
+ipcMain.handle(IPC.GIT_GET_REBASE_PLAN, async (_event, baseHash: string) => {
+  const repoPath = repoManager?.getCurrentPath();
+  if (!repoPath) throw new Error('No repository open');
+  return prepareRebasePlan(repoPath, baseHash);
+});
+
+ipcMain.handle(
+  IPC.GIT_RUN_INTERACTIVE_REBASE,
+  async (_event, plan: import('../shared/rebase-types').RebasePlan) => {
+    const repoPath = repoManager?.getCurrentPath();
+    if (!repoPath) throw new Error('No repository open');
+    try {
+      return await runInteractiveRebase(repoPath, plan);
+    } finally {
+      notifyRepoChanged();
+    }
+  },
+);
 
 ipcMain.handle(
   IPC.GIT_ARCHIVE,
@@ -752,6 +790,7 @@ app.on('ready', async () => {
     const userData = app.getPath('userData');
     configureRepoSettings(userData);
     configureAppSettings(userData);
+    configureInteractiveRebase(path.join(userData, 'interactive-rebase'));
     const dbPath = path.join(userData, 'repositories.db');
     const db = await createDatabase(dbPath);
     repoManager = new RepoManager(db);

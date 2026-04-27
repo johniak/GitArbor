@@ -169,6 +169,101 @@ export async function createTestRepo(): Promise<TestRepo> {
 }
 
 /**
+ * Add a `feature/rebase-interactive-test` branch with a messy commit chain
+ * tailored for interactive-rebase scenarios. Caller passes the existing
+ * test repo path. Leaves the working tree on the test branch so callers can
+ * exercise rebase actions; checkout back to main if they need a clean state.
+ *
+ * Branch (newest-first):
+ *   add tests for rebase page
+ *   tiny tweak to rebase                    ← fixup target
+ *   fix: add rebase contact page            ← reword target
+ *   add rebase page route                   ← reorder target
+ *   WIP rebase debug                        ← drop target
+ *   add rebase About page                   ← squash target
+ *   add rebase home page
+ */
+export async function createRebaseInteractiveBranch(
+  repoPath: string,
+): Promise<{ baseHash: string }> {
+  const git = simpleGit(repoPath);
+
+  // Anchor on main so the branch sits cleanly off it.
+  await git.checkout('main');
+  // Reset working tree before branching to avoid carrying over the dirty
+  // state from createTestRepo.
+  await git.raw(['stash', 'push', '-u', '-m', 'pre-rebase-branch']);
+  await git.checkoutLocalBranch('feature/rebase-interactive-test');
+
+  // Capture the base (= last main commit) for the rebase entry point.
+  const baseHash = (await git.raw(['rev-parse', 'HEAD'])).trim();
+
+  fs.mkdirSync(path.join(repoPath, 'rebase-site'), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(repoPath, 'rebase-site', 'home.txt'),
+    'rebase home\n',
+  );
+  await git.add('.');
+  await git.commit('add rebase home page');
+
+  fs.writeFileSync(
+    path.join(repoPath, 'rebase-site', 'about.txt'),
+    'rebase about\n',
+  );
+  await git.add('.');
+  await git.commit('add rebase About page');
+
+  // WIP debug touches a SEPARATE file so dropping this commit doesn't change
+  // the context for later commits that modify about.txt.
+  fs.writeFileSync(
+    path.join(repoPath, 'rebase-site', 'wip-debug.txt'),
+    'temporary debug log, please ignore\n',
+  );
+  await git.add('.');
+  await git.commit('WIP rebase debug');
+
+  fs.mkdirSync(path.join(repoPath, 'rebase-site', 'router'), {
+    recursive: true,
+  });
+  fs.writeFileSync(
+    path.join(repoPath, 'rebase-site', 'router', 'routes.txt'),
+    '/about -> about\n',
+  );
+  await git.add('.');
+  await git.commit('add rebase page route');
+
+  fs.mkdirSync(path.join(repoPath, 'rebase-site', 'contact'), {
+    recursive: true,
+  });
+  fs.writeFileSync(
+    path.join(repoPath, 'rebase-site', 'contact', 'contact.txt'),
+    'rebase@example.com\n',
+  );
+  await git.add('.');
+  await git.commit('fix: add rebase contact page');
+
+  fs.appendFileSync(
+    path.join(repoPath, 'rebase-site', 'about.txt'),
+    'Last updated: 2026\n',
+  );
+  await git.add('.');
+  await git.commit('tiny tweak to rebase');
+
+  fs.mkdirSync(path.join(repoPath, 'rebase-site', 'tests'), {
+    recursive: true,
+  });
+  fs.writeFileSync(
+    path.join(repoPath, 'rebase-site', 'tests', 'about.test.txt'),
+    'test: rebase about renders\n',
+  );
+  await git.add('.');
+  await git.commit('add tests for rebase page');
+
+  return { baseHash };
+}
+
+/**
  * Set up a merge conflict scenario in an existing test repo.
  *
  * Creates branch `merge-conflict-test` that modifies `auth.ts` one way, then
