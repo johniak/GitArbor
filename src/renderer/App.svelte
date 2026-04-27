@@ -39,6 +39,7 @@
   } from './types';
   import { computeGraphIncremental, createGraphState } from './graph';
   import { onMount } from 'svelte';
+  import { SvelteSet } from 'svelte/reactivity';
   import { settingsStore } from './settings-store.svelte';
   import { STORAGE_KEY, loadWidths } from './column-widths';
 
@@ -48,6 +49,77 @@
   let sidebarWidth = $derived(settingsStore.settings.layout.sidebarWidth);
   let commitLogHeight = $derived(settingsStore.settings.layout.commitLogHeight);
   let fileListWidth = $derived(settingsStore.settings.layout.fileListWidth);
+
+  // FileList view/sort/filter/staging settings (per-context, persisted per-repo)
+  let workingViewMode = $derived(
+    settingsStore.settings.fileList.working.viewMode,
+  );
+  let workingSortMode = $derived(
+    settingsStore.settings.fileList.working.sortMode,
+  );
+  let workingStatusFilter = $derived(
+    settingsStore.settings.fileList.working.statusFilter,
+  );
+  let workingStagingMode = $derived(
+    settingsStore.settings.fileList.working.stagingMode,
+  );
+  let historicalViewMode = $derived(
+    settingsStore.settings.fileList.historical.viewMode,
+  );
+  let historicalSortMode = $derived(
+    settingsStore.settings.fileList.historical.sortMode,
+  );
+
+  // Per-session "exclude from next commit" set, used in no-staging mode.
+  let excludedPaths = new SvelteSet<string>();
+
+  // Reset excluded set when staging mode changes away from 'none'.
+  $effect(() => {
+    if (workingStagingMode !== 'none' && excludedPaths.size > 0) {
+      excludedPaths.clear();
+    }
+  });
+
+  function toggleExclude(path: string) {
+    if (excludedPaths.has(path)) excludedPaths.delete(path);
+    else excludedPaths.add(path);
+  }
+
+  // Setting writers — route to the right per-context branch.
+  function setWorkingViewMode(viewMode: typeof workingViewMode) {
+    settingsStore.update({ fileList: { working: { viewMode } } });
+  }
+  function setWorkingSortMode(sortMode: typeof workingSortMode) {
+    settingsStore.update({ fileList: { working: { sortMode } } });
+  }
+  function setWorkingStatusFilter(statusFilter: typeof workingStatusFilter) {
+    settingsStore.update({ fileList: { working: { statusFilter } } });
+  }
+  function setWorkingStagingMode(stagingMode: typeof workingStagingMode) {
+    settingsStore.update({ fileList: { working: { stagingMode } } });
+  }
+  function setHistoricalViewMode(viewMode: typeof historicalViewMode) {
+    settingsStore.update({ fileList: { historical: { viewMode } } });
+  }
+  function setHistoricalSortMode(sortMode: typeof historicalSortMode) {
+    settingsStore.update({ fileList: { historical: { sortMode } } });
+  }
+
+  // History view dispatches based on whether "Uncommitted changes" is selected.
+  let historyContextViewMode = $derived(
+    isWorkingChangesSelected ? workingViewMode : historicalViewMode,
+  );
+  let historyContextSortMode = $derived(
+    isWorkingChangesSelected ? workingSortMode : historicalSortMode,
+  );
+  function setHistoryContextViewMode(m: typeof workingViewMode) {
+    if (isWorkingChangesSelected) setWorkingViewMode(m);
+    else setHistoricalViewMode(m);
+  }
+  function setHistoryContextSortMode(m: typeof workingSortMode) {
+    if (isWorkingChangesSelected) setWorkingSortMode(m);
+    else setHistoricalSortMode(m);
+  }
 
   const MIN_SIDEBAR = 150;
   const MAX_SIDEBAR = 400;
@@ -469,16 +541,24 @@
     push: boolean,
     noVerify: boolean,
   ) {
+    const stageAll = workingStagingMode === 'none';
+    const exclude = stageAll ? Array.from(excludedPaths) : undefined;
     try {
       await withProgress(
         push ? 'Committing and pushing...' : 'Committing...',
         async () => {
-          await window.electronAPI.git.commit(message, amend, noVerify);
+          await window.electronAPI.git.commit(message, {
+            amend,
+            noVerify,
+            stageAll,
+            exclude,
+          });
           if (push) {
             await window.electronAPI.git.push();
           }
         },
       );
+      excludedPaths.clear();
       activeView = 'history';
       await loadAllData();
     } catch (e) {
@@ -1266,6 +1346,11 @@
                 {workingStatus}
                 isWorkingChanges={true}
                 selectedPath={selectedFile}
+                viewMode={workingViewMode}
+                sortMode={workingSortMode}
+                statusFilter={workingStatusFilter}
+                stagingMode={workingStagingMode}
+                {excludedPaths}
                 onSelectFile={handleSelectFile}
                 onStageFile={handleStageFile}
                 onOpenFile={handleOpenFile}
@@ -1279,6 +1364,11 @@
                 onResolveConflict={handleResolveConflict}
                 onMarkResolved={handleMarkResolved}
                 onMarkUnresolved={handleMarkUnresolved}
+                onViewMode={setWorkingViewMode}
+                onSortMode={setWorkingSortMode}
+                onStatusFilter={setWorkingStatusFilter}
+                onStagingMode={setWorkingStagingMode}
+                onToggleExclude={toggleExclude}
               />
             </div>
 
@@ -1301,6 +1391,7 @@
           <CommitPanel
             currentBranch={sidebarData.branches.find((b) => b.current)?.name ??
               null}
+            stagingMode={workingStagingMode}
             onCommit={handleCommit}
             onCancel={handleCancelCommit}
           />
@@ -1325,9 +1416,13 @@
               selectedPath={selectedFile}
               selectedCommit={selectedCommitData}
               {commitBody}
+              viewMode={historicalViewMode}
+              sortMode={historicalSortMode}
               onSelectFile={handleSelectFile}
               onSelectParent={handleSelectParent}
               onOpenFile={handleOpenFile}
+              onViewMode={setHistoricalViewMode}
+              onSortMode={setHistoricalSortMode}
             />
           </div>
 
@@ -1370,6 +1465,11 @@
               selectedPath={selectedFile}
               selectedCommit={selectedCommitData}
               {commitBody}
+              viewMode={historyContextViewMode}
+              sortMode={historyContextSortMode}
+              statusFilter={workingStatusFilter}
+              stagingMode={workingStagingMode}
+              {excludedPaths}
               onSelectFile={handleSelectFile}
               onStageFile={handleStageFile}
               onSelectParent={handleSelectParent}
@@ -1384,6 +1484,11 @@
               onResolveConflict={handleResolveConflict}
               onMarkResolved={handleMarkResolved}
               onMarkUnresolved={handleMarkUnresolved}
+              onViewMode={setHistoryContextViewMode}
+              onSortMode={setHistoryContextSortMode}
+              onStatusFilter={setWorkingStatusFilter}
+              onStagingMode={setWorkingStagingMode}
+              onToggleExclude={toggleExclude}
             />
           </div>
 

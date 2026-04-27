@@ -144,7 +144,15 @@ export interface GitAPI {
   unstageFile(path: string): Promise<void>;
   stageAll(): Promise<void>;
   unstageAll(): Promise<void>;
-  commit(message: string, amend?: boolean, noVerify?: boolean): Promise<void>;
+  commit(
+    message: string,
+    opts?: {
+      amend?: boolean;
+      noVerify?: boolean;
+      stageAll?: boolean;
+      exclude?: string[];
+    },
+  ): Promise<void>;
   pull(): Promise<void>;
   push(): Promise<void>;
   pushBranches(

@@ -4,6 +4,7 @@
 
   type Props = {
     currentBranch?: string | null;
+    stagingMode?: 'split' | 'fluid' | 'none';
     onCommit?: (
       message: string,
       amend: boolean,
@@ -13,7 +14,18 @@
     onCancel?: () => void;
   };
 
-  let { currentBranch = null, onCommit, onCancel }: Props = $props();
+  let {
+    currentBranch = null,
+    stagingMode = 'split',
+    onCommit,
+    onCancel,
+  }: Props = $props();
+
+  const STAGING_HINT: Record<NonNullable<Props['stagingMode']>, string> = {
+    split: '',
+    fluid: 'Fluid: tick the files to include',
+    none: 'No staging: all changes will be committed',
+  };
 
   let message = $state('');
   let amend = $state(false);
@@ -57,6 +69,11 @@
       {authorName}
       {#if authorEmail}<span class="email">&lt;{authorEmail}&gt;</span>{/if}
     </span>
+    {#if STAGING_HINT[stagingMode]}
+      <span class="staging-hint" data-testid="staging-hint"
+        >{STAGING_HINT[stagingMode]}</span
+      >
+    {/if}
   </div>
 
   <textarea
@@ -124,8 +141,20 @@
   }
 
   .author-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
     font-size: 11px;
     color: var(--color-text-secondary);
+  }
+
+  .staging-hint {
+    font-size: 10px;
+    padding: 2px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    color: var(--color-text-secondary);
+    background: var(--color-bg-base);
   }
 
   .author {

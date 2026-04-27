@@ -2,9 +2,15 @@ import {
   DEFAULT_COLUMN_WIDTHS,
   type ColumnWidths,
 } from '../renderer/column-widths';
+import type {
+  FileSortMode,
+  FileStatusFilter,
+  FileViewMode,
+  StagingMode,
+} from '../renderer/lib/file-list-sort';
 
 export interface RepoSettings {
-  schemaVersion: 1;
+  schemaVersion: 2;
   path: string;
   graph: { showAllBranches: boolean; logOrder: 'date' | 'topo' };
   columns: ColumnWidths;
@@ -29,10 +35,22 @@ export interface RepoSettings {
     Remotes: boolean;
     Stashes: boolean;
   };
+  fileList: {
+    working: {
+      viewMode: FileViewMode;
+      sortMode: FileSortMode;
+      statusFilter: FileStatusFilter;
+      stagingMode: StagingMode;
+    };
+    historical: {
+      viewMode: FileViewMode;
+      sortMode: FileSortMode;
+    };
+  };
 }
 
 export const DEFAULT_REPO_SETTINGS: RepoSettings = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   path: '',
   graph: { showAllBranches: true, logOrder: 'topo' },
   columns: { ...DEFAULT_COLUMN_WIDTHS },
@@ -56,5 +74,17 @@ export const DEFAULT_REPO_SETTINGS: RepoSettings = {
     Tags: true,
     Remotes: true,
     Stashes: true,
+  },
+  fileList: {
+    working: {
+      viewMode: 'flat-single',
+      sortMode: 'path-asc',
+      statusFilter: 'pending',
+      stagingMode: 'split',
+    },
+    historical: {
+      viewMode: 'flat-single',
+      sortMode: 'path-asc',
+    },
   },
 };

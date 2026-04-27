@@ -87,7 +87,7 @@ export function updateRepoSettings(
   const merged: RepoSettings = {
     ...deepMerge(current, patch),
     path: repoPath,
-    schemaVersion: 1,
+    schemaVersion: 2,
   };
   cache.set(repoPath, merged);
 

@@ -35,8 +35,10 @@ GitArbor feature matrix. `[x]` = done, `[ ]` = planned / missing, `[~]` = partia
 - [x] Open file in external app (`shell.openPath`)
 - [x] Uncommitted count badge in top toolbar
 - [x] Renamed file detection (`ChangedFile.from`)
-- [ ] Tree view for file list (hierarchical folders)
-- [ ] Flat view toggle / multi-column flat mode
+- [x] Tree view for file list (hierarchical folders, JetBrains-style middle-dir compaction)
+- [x] Flat view toggle / multi-column flat mode (single column / 2-col grid / tree)
+- [x] Show-only filter (Pending / Conflicts / Untracked / Modified — Ignored/Clean/All-files menu items present, disabled until backed by IPC)
+- [x] Sort modes (Path ↑↓, File name ↑↓, File status, Checked/unchecked)
 - [ ] File search within file lists
 - [ ] File type change detection (permissions, symlinks)
 - [ ] Clean working copy (`git clean -fd` UI for untracked)
@@ -268,7 +270,7 @@ GitArbor feature matrix. `[x]` = done, `[ ]` = planned / missing, `[~]` = partia
 - [x] Terminal integration — toolbar opens platform-native terminal in repo cwd
 - [ ] Light theme / theme switcher / auto from system
 - [ ] Font family / font size customization
-- [ ] Staging mode switcher (no-staging / fluid / split)
+- [x] Staging mode switcher (no-staging / fluid / split — `git commit -A` with per-file Exclude in no-staging mode)
 - [ ] Compact mode (denser log)
 - [ ] Line endings (CRLF / LF) handling UI
 - [ ] Whitespace visualization toggle

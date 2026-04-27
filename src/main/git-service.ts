@@ -489,14 +489,27 @@ export class GitService {
 
   async commit(
     message: string,
-    amend = false,
-    noVerify = false,
-    author?: { name: string; email: string },
+    opts: {
+      amend?: boolean;
+      noVerify?: boolean;
+      stageAll?: boolean;
+      exclude?: string[];
+      author?: { name: string; email: string };
+    } = {},
   ): Promise<void> {
+    const { amend, noVerify, stageAll, exclude, author } = opts;
+
+    if (stageAll) {
+      // Stage every change (including untracked + deletions), then unstage
+      // any explicitly-excluded paths so they don't enter the commit.
+      await this.git.raw(['add', '-A']);
+      if (exclude && exclude.length > 0) {
+        await this.git.raw(['reset', 'HEAD', '--', ...exclude]);
+      }
+    }
+
     const args: string[] = [];
     if (author && author.name && author.email) {
-      // -c flags go BEFORE the subcommand so they override user.name/email
-      // for this invocation only, without writing to any git config file.
       args.push(
         '-c',
         `user.name=${author.name}`,

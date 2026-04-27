@@ -154,6 +154,14 @@ export async function createTestRepo(): Promise<TestRepo> {
     'export const unstaged = true;\n',
   ); // unstaged (not added)
 
+  // Untracked file in a subdirectory — exercises tree-view rendering and
+  // path-vs-name sort distinctions.
+  fs.mkdirSync(path.join(workDir, 'src', 'utils'), { recursive: true });
+  fs.writeFileSync(
+    path.join(workDir, 'src', 'utils', 'helper.ts'),
+    'export const helper = true;\n',
+  );
+
   return {
     repoPath: workDir,
     cleanup: () => fs.rmSync(tmpDir, { recursive: true, force: true }),

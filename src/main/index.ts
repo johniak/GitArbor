@@ -234,7 +234,15 @@ ipcMain.handle(
       message,
       amend,
       noVerify,
-    }: { message: string; amend?: boolean; noVerify?: boolean },
+      stageAll,
+      exclude,
+    }: {
+      message: string;
+      amend?: boolean;
+      noVerify?: boolean;
+      stageAll?: boolean;
+      exclude?: string[];
+    },
   ) => {
     const s = loadAppSettings();
     const author =
@@ -243,7 +251,13 @@ ipcMain.handle(
       s.general.authorEmail
         ? { name: s.general.authorName, email: s.general.authorEmail }
         : undefined;
-    return getGitService().commit(message, amend, noVerify, author);
+    return getGitService().commit(message, {
+      amend,
+      noVerify,
+      stageAll,
+      exclude,
+      author,
+    });
   },
 );
 ipcMain.handle(IPC.GIT_PULL, () => getGitService().pull());

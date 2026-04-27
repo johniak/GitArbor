@@ -1,22 +1,25 @@
 <script lang="ts">
   import { SvelteSet } from 'svelte/reactivity';
   import Splitter from './Splitter.svelte';
-  import {
-    Pencil,
-    Plus,
-    Minus,
-    ArrowRight,
-    Copy,
-    AlertTriangle,
-    CirclePlus,
-  } from '@lucide/svelte';
-  import type { Component } from 'svelte';
+  import FileRow from './FileRow.svelte';
+  import FileListHeaderControls from './FileListHeaderControls.svelte';
   import type {
     ChangedFile,
     Commit,
     FileStatus,
     WorkingStatus,
   } from '../types';
+  import {
+    buildFileTree,
+    collectDirPaths,
+    filterFiles,
+    flattenTree,
+    sortFiles,
+    type FileSortMode,
+    type FileStatusFilter,
+    type FileViewMode,
+    type StagingMode,
+  } from '../lib/file-list-sort';
 
   type Props = {
     files: ChangedFile[];
@@ -25,6 +28,13 @@
     selectedPath?: string | null;
     selectedCommit?: Commit | null;
     commitBody?: string;
+    /** View / sort / filter / staging settings (reactive from settings store). */
+    viewMode?: FileViewMode;
+    sortMode?: FileSortMode;
+    statusFilter?: FileStatusFilter;
+    stagingMode?: StagingMode;
+    /** Per-session exclusions for no-staging mode. */
+    excludedPaths?: ReadonlySet<string>;
     onSelectFile?: (path: string, staged: boolean) => void;
     onStageFile?: (path: string, stage: boolean) => void;
     onSelectParent?: (hash: string) => void;
@@ -41,6 +51,11 @@
     onResolveConflict?: (path: string, strategy: 'mine' | 'theirs') => void;
     onMarkResolved?: (path: string) => void;
     onMarkUnresolved?: (path: string) => void;
+    onViewMode?: (mode: FileViewMode) => void;
+    onSortMode?: (mode: FileSortMode) => void;
+    onStatusFilter?: (filter: FileStatusFilter) => void;
+    onStagingMode?: (mode: StagingMode) => void;
+    onToggleExclude?: (path: string) => void;
   };
 
   let {
@@ -50,6 +65,11 @@
     selectedPath = null,
     selectedCommit = null,
     commitBody = '',
+    viewMode = 'flat-single',
+    sortMode = 'path-asc',
+    statusFilter = 'pending',
+    stagingMode = 'split',
+    excludedPaths,
     onSelectFile,
     onStageFile,
     onSelectParent,
@@ -64,13 +84,17 @@
     onResolveConflict,
     onMarkResolved,
     onMarkUnresolved,
+    onViewMode,
+    onSortMode,
+    onStatusFilter,
+    onStagingMode,
+    onToggleExclude,
   }: Props = $props();
 
   let stagedExpanded = $state(true);
   let unstagedExpanded = $state(true);
   let commitInfoHeight = $state(200);
 
-  // Multi-select state — keys are "path\0staged" to distinguish same file in both sections
   let selectedKeys = new SvelteSet<string>();
   let lastClickedKey = $state<string | null>(null);
 
@@ -78,36 +102,141 @@
     return `${path}\0${staged}`;
   }
 
-  // Context menu — supports single or multi file
   let contextMenuPos = $state<{ x: number; y: number } | null>(null);
   let contextMenuFiles = $state<
     Array<{ path: string; status: FileStatus; staged: boolean }>
   >([]);
 
-  // Flat ordered list of all working files for shift-click range
-  let allWorkingFiles = $derived.by(() => {
+  // Tree expand/collapse state (session only)
+  let expandedDirs = new SvelteSet<string>();
+
+  // ── Filtered + sorted views ──────────────────────────────────
+  let stagedSorted = $derived.by(() => {
     if (!workingStatus) return [];
-    const files: Array<{
+    return sortFiles(
+      filterFiles(workingStatus.staged, statusFilter),
+      sortMode,
+      new Set(workingStatus.staged.map((f) => f.path)),
+    );
+  });
+
+  let unstagedSorted = $derived.by(() => {
+    if (!workingStatus) return [];
+    return sortFiles(
+      filterFiles(workingStatus.unstaged, statusFilter),
+      sortMode,
+      new Set(workingStatus.staged.map((f) => f.path)),
+    );
+  });
+
+  let stagedPathSet = $derived.by(() => {
+    const s = new SvelteSet<string>();
+    for (const f of workingStatus?.staged ?? []) s.add(f.path);
+    return s;
+  });
+
+  /** Combined list for fluid / no-staging modes. Same path may exist
+   *  in both staged and unstaged; collapse to one row, prefer staged. */
+  let combinedSorted = $derived.by(() => {
+    if (!workingStatus) return [];
+    const seen = new SvelteSet<string>();
+    const merged: ChangedFile[] = [];
+    for (const f of workingStatus.staged) {
+      if (!seen.has(f.path)) {
+        seen.add(f.path);
+        merged.push(f);
+      }
+    }
+    for (const f of workingStatus.unstaged) {
+      if (!seen.has(f.path)) {
+        seen.add(f.path);
+        merged.push(f);
+      }
+    }
+    return sortFiles(
+      filterFiles(merged, statusFilter),
+      sortMode,
+      stagedPathSet,
+    );
+  });
+
+  let commitSorted = $derived.by(() => sortFiles(files, sortMode));
+
+  // Tree projections
+  let stagedTree = $derived(buildFileTree(stagedSorted, sortMode));
+  let unstagedTree = $derived(buildFileTree(unstagedSorted, sortMode));
+  let combinedTree = $derived(buildFileTree(combinedSorted, sortMode));
+  let commitTree = $derived(buildFileTree(commitSorted, sortMode));
+
+  let stagedTreeRows = $derived(flattenTree(stagedTree, expandedDirs));
+  let unstagedTreeRows = $derived(flattenTree(unstagedTree, expandedDirs));
+  let combinedTreeRows = $derived(flattenTree(combinedTree, expandedDirs));
+  let commitTreeRows = $derived(flattenTree(commitTree, expandedDirs));
+
+  // Auto-expand all directories the first time we switch into tree view.
+  $effect(() => {
+    if (viewMode !== 'tree') return;
+    let nodes;
+    if (isWorkingChanges) {
+      nodes =
+        stagingMode === 'split'
+          ? [...stagedTree, ...unstagedTree]
+          : combinedTree;
+    } else {
+      nodes = commitTree;
+    }
+    if (expandedDirs.size === 0) {
+      for (const path of collectDirPaths(nodes)) expandedDirs.add(path);
+    }
+  });
+
+  function toggleDir(path: string) {
+    if (expandedDirs.has(path)) expandedDirs.delete(path);
+    else expandedDirs.add(path);
+  }
+
+  // ── Ordered list for shift-click range selection ─────────────
+  let allWorkingFiles = $derived.by(() => {
+    if (!workingStatus)
+      return [] as Array<{
+        path: string;
+        status: FileStatus;
+        staged: boolean;
+        key: string;
+      }>;
+    const out: Array<{
       path: string;
       status: FileStatus;
       staged: boolean;
       key: string;
     }> = [];
-    for (const f of workingStatus.staged)
-      files.push({
-        path: f.path,
-        status: f.status,
-        staged: true,
-        key: selKey(f.path, true),
-      });
-    for (const f of workingStatus.unstaged)
-      files.push({
-        path: f.path,
-        status: f.status,
-        staged: false,
-        key: selKey(f.path, false),
-      });
-    return files;
+    if (stagingMode === 'split') {
+      for (const f of stagedSorted)
+        out.push({
+          path: f.path,
+          status: f.status,
+          staged: true,
+          key: selKey(f.path, true),
+        });
+      for (const f of unstagedSorted)
+        out.push({
+          path: f.path,
+          status: f.status,
+          staged: false,
+          key: selKey(f.path, false),
+        });
+    } else {
+      for (const f of combinedSorted) {
+        const staged = stagedPathSet.has(f.path);
+        out.push({
+          path: f.path,
+          status: f.status,
+          staged,
+          key: selKey(f.path, staged),
+        });
+      }
+    }
+    return out;
   });
 
   function handleFileClick(
@@ -150,10 +279,8 @@
 
     const key = selKey(path, staged);
     if (selectedKeys.has(key) && selectedKeys.size > 1) {
-      // Right-click on selected file in multi-selection
       contextMenuFiles = allWorkingFiles.filter((f) => selectedKeys.has(f.key));
     } else {
-      // Right-click on unselected file or single selection
       selectedKeys.clear();
       selectedKeys.add(key);
       lastClickedKey = key;
@@ -184,15 +311,14 @@
     return '#6a9955';
   }
 
-  const statusIcon: Record<FileStatus, { icon: Component; color: string }> = {
-    M: { icon: Pencil, color: '#e2a04f' },
-    A: { icon: Plus, color: '#5cb85c' },
-    D: { icon: Minus, color: '#d9534f' },
-    R: { icon: ArrowRight, color: '#5bc0de' },
-    C: { icon: Copy, color: '#5bc0de' },
-    U: { icon: AlertTriangle, color: '#d9534f' },
-    '?': { icon: CirclePlus, color: '#5cb85c' },
-  };
+  function isExcluded(path: string): boolean {
+    return excludedPaths?.has(path) ?? false;
+  }
+
+  // Decide whether a given row in commit-detail context is selected.
+  function commitRowSelected(path: string): boolean {
+    return selectedPath === path;
+  }
 </script>
 
 <svelte:window
@@ -205,145 +331,223 @@
 />
 
 <div class="file-list">
-  {#if isWorkingChanges && workingStatus}
-    <!-- Working changes: staged + unstaged sections -->
-    <div class="file-header">Pending files, sorted by path</div>
-    <div class="files">
-      <!-- Staged -->
-      <div class="section-header-row">
-        <input
-          type="checkbox"
-          class="stage-all-checkbox"
-          checked
-          onclick={(e: MouseEvent) => {
-            e.stopPropagation();
-            onUnstageAll?.();
-          }}
-          title="Unstage all files"
-        />
-        <button
-          class="section-toggle"
-          onclick={() => (stagedExpanded = !stagedExpanded)}
-        >
-          <span class="expand-arrow">{stagedExpanded ? '▾' : '▸'}</span>
-          Staged files
-          <span class="file-count">{workingStatus.staged.length}</span>
-        </button>
-      </div>
-      {#if stagedExpanded}
-        {#each workingStatus.staged as file}
-          <div
-            class="file-row"
-            class:selected={selectedKeys.has(selKey(file.path, true))}
-            oncontextmenu={(e) =>
-              openContextMenu(e, file.path, file.status, true)}
-            onclick={(e) => handleFileClick(e, file.path, file.status, true)}
-          >
-            <input
-              type="checkbox"
-              class="stage-checkbox"
-              checked
-              onclick={(e: MouseEvent) => {
-                e.stopPropagation();
-                onStageFile?.(file.path, false);
-              }}
-            />
-            <span class="file-status">
-              <svelte:component
-                this={statusIcon[file.status].icon}
-                size={14}
-                color={statusIcon[file.status].color}
-              />
-            </span>
-            <span
-              class="file-path"
-              style="color:{selectedKeys.has(selKey(file.path, true))
-                ? 'var(--color-text-white)'
-                : 'var(--color-text-primary)'}">{file.path}</span
-            >
-          </div>
-        {/each}
-      {/if}
+  <FileListHeaderControls
+    context={isWorkingChanges ? 'working' : 'historical'}
+    {viewMode}
+    {sortMode}
+    statusFilter={isWorkingChanges ? statusFilter : undefined}
+    stagingMode={isWorkingChanges ? stagingMode : undefined}
+    onViewMode={(m) => onViewMode?.(m)}
+    onSortMode={(m) => onSortMode?.(m)}
+    onStatusFilter={(f) => onStatusFilter?.(f)}
+    onStagingMode={(m) => onStagingMode?.(m)}
+  />
 
-      <!-- Unstaged -->
-      <div class="section-header-row">
-        <input
-          type="checkbox"
-          class="stage-all-checkbox"
-          onclick={(e: MouseEvent) => {
-            e.stopPropagation();
-            onStageAll?.();
-          }}
-          title="Stage all files"
+  {#snippet flatBody(
+    items: ChangedFile[],
+    staged: boolean,
+    withCheckbox: boolean,
+    multi: boolean,
+  )}
+    <div
+      class="files-body"
+      class:multi-col={multi}
+      class:multi-col-with-checkbox={multi && withCheckbox}
+    >
+      {#if multi}
+        <div class="multi-col-header">
+          <span class="checkbox-col"></span>
+          <span class="status-col"></span>
+          <span class="filename-col">Filename</span>
+          <span class="path-col">Path</span>
+        </div>
+      {/if}
+      {#each items as file (file.path + (staged ? '~s' : '~u'))}
+        <FileRow
+          {file}
+          selected={selectedKeys.has(selKey(file.path, staged))}
+          showCheckbox={withCheckbox}
+          checked={stagedPathSet.has(file.path)}
+          excluded={stagingMode === 'none' && isExcluded(file.path)}
+          {multi}
+          onClick={(e) => handleFileClick(e, file.path, file.status, staged)}
+          onContextMenu={(e) =>
+            openContextMenu(e, file.path, file.status, staged)}
+          onCheckChange={() =>
+            onStageFile?.(file.path, !stagedPathSet.has(file.path))}
         />
-        <button
-          class="section-toggle"
-          onclick={() => (unstagedExpanded = !unstagedExpanded)}
-        >
-          <span class="expand-arrow">{unstagedExpanded ? '▾' : '▸'}</span>
-          Unstaged files
-          <span class="file-count">{workingStatus.unstaged.length}</span>
-        </button>
-      </div>
-      {#if unstagedExpanded}
-        {#each workingStatus.unstaged as file}
-          <div
-            class="file-row"
-            class:selected={selectedKeys.has(selKey(file.path, false))}
-            oncontextmenu={(e) =>
-              openContextMenu(e, file.path, file.status, false)}
-            onclick={(e) => handleFileClick(e, file.path, file.status, false)}
+      {/each}
+    </div>
+  {/snippet}
+
+  {#snippet treeBody(
+    rows: ReturnType<typeof flattenTree>,
+    staged: boolean,
+    withCheckbox: boolean,
+  )}
+    <div class="files-body">
+      {#each rows as row (row.kind === 'dir' ? `d:${row.path}` : `f:${row.file.path}~${staged}`)}
+        {#if row.kind === 'dir'}
+          <button
+            type="button"
+            class="dir-row"
+            style="padding-left: {12 + row.depth * 12}px"
+            onclick={() => toggleDir(row.path)}
+            data-testid="tree-dir"
           >
-            <input
-              type="checkbox"
-              class="stage-checkbox"
-              onclick={(e: MouseEvent) => {
-                e.stopPropagation();
-                onStageFile?.(file.path, true);
-              }}
-            />
-            <span class="file-status">
-              <svelte:component
-                this={statusIcon[file.status].icon}
-                size={14}
-                color={statusIcon[file.status].color}
-              />
-            </span>
-            <span
-              class="file-path"
-              style="color:{selectedKeys.has(selKey(file.path, false))
-                ? 'var(--color-text-white)'
-                : 'var(--color-text-primary)'}">{file.path}</span
-            >
-          </div>
-        {/each}
+            <span class="expand-arrow">{row.collapsed ? '▸' : '▾'}</span>
+            <span class="dir-name">{row.name}</span>
+          </button>
+        {:else}
+          <FileRow
+            file={row.file}
+            indent={row.depth * 12}
+            displayLabel={row.file.path.split('/').pop()}
+            selected={isWorkingChanges
+              ? selectedKeys.has(selKey(row.file.path, staged))
+              : commitRowSelected(row.file.path)}
+            showCheckbox={withCheckbox}
+            checked={stagedPathSet.has(row.file.path)}
+            excluded={stagingMode === 'none' && isExcluded(row.file.path)}
+            onClick={(e) => {
+              if (isWorkingChanges)
+                handleFileClick(e, row.file.path, row.file.status, staged);
+              else onSelectFile?.(row.file.path, false);
+            }}
+            onContextMenu={(e) =>
+              openContextMenu(e, row.file.path, row.file.status, staged)}
+            onCheckChange={() =>
+              onStageFile?.(row.file.path, !stagedPathSet.has(row.file.path))}
+          />
+        {/if}
+      {/each}
+    </div>
+  {/snippet}
+
+  {#snippet body(items: ChangedFile[], staged: boolean, withCheckbox: boolean)}
+    {#if viewMode === 'tree'}
+      {@render treeBody(
+        staged
+          ? stagedTreeRows
+          : isWorkingChanges
+            ? stagingMode === 'split'
+              ? unstagedTreeRows
+              : combinedTreeRows
+            : commitTreeRows,
+        staged,
+        withCheckbox,
+      )}
+    {:else}
+      {@render flatBody(items, staged, withCheckbox, viewMode === 'flat-multi')}
+    {/if}
+  {/snippet}
+
+  {#if isWorkingChanges && workingStatus}
+    <div class="files">
+      {#if stagingMode === 'split'}
+        <!-- Staged section -->
+        <div class="section-header-row">
+          <input
+            type="checkbox"
+            class="stage-all-checkbox"
+            checked
+            onclick={(e: MouseEvent) => {
+              e.stopPropagation();
+              onUnstageAll?.();
+            }}
+            title="Unstage all files"
+          />
+          <button
+            class="section-toggle"
+            data-testid="section-staged"
+            onclick={() => (stagedExpanded = !stagedExpanded)}
+          >
+            <span class="expand-arrow">{stagedExpanded ? '▾' : '▸'}</span>
+            Staged files
+            <span class="file-count">{stagedSorted.length}</span>
+          </button>
+        </div>
+        {#if stagedExpanded}
+          {@render body(stagedSorted, true, false)}
+        {/if}
+        <!-- Unstaged section -->
+        <div class="section-header-row">
+          <input
+            type="checkbox"
+            class="stage-all-checkbox"
+            onclick={(e: MouseEvent) => {
+              e.stopPropagation();
+              onStageAll?.();
+            }}
+            title="Stage all files"
+          />
+          <button
+            class="section-toggle"
+            data-testid="section-unstaged"
+            onclick={() => (unstagedExpanded = !unstagedExpanded)}
+          >
+            <span class="expand-arrow">{unstagedExpanded ? '▾' : '▸'}</span>
+            Unstaged files
+            <span class="file-count">{unstagedSorted.length}</span>
+          </button>
+        </div>
+        {#if unstagedExpanded}
+          {@render body(unstagedSorted, false, false)}
+        {/if}
+      {:else if stagingMode === 'fluid'}
+        {@render body(combinedSorted, false, true)}
+      {:else}
+        <!-- stagingMode === 'none' -->
+        {@render body(combinedSorted, false, false)}
       {/if}
     </div>
   {:else}
-    <!-- Normal commit: flat list -->
-    <div class="file-header">Changed files — Sorted by path</div>
     <div class="files">
-      {#each files as file}
-        <button
-          class="file-row"
-          class:selected={selectedPath === file.path}
-          onclick={() => onSelectFile?.(file.path, false)}
-        >
-          <span class="file-status">
-            <svelte:component
-              this={statusIcon[file.status].icon}
-              size={14}
-              color={statusIcon[file.status].color}
+      {#if viewMode === 'tree'}
+        <div class="files-body">
+          {#each commitTreeRows as row (row.kind === 'dir' ? `d:${row.path}` : `f:${row.file.path}`)}
+            {#if row.kind === 'dir'}
+              <button
+                type="button"
+                class="dir-row"
+                style="padding-left: {12 + row.depth * 12}px"
+                onclick={() => toggleDir(row.path)}
+                data-testid="tree-dir"
+              >
+                <span class="expand-arrow">{row.collapsed ? '▸' : '▾'}</span>
+                <span class="dir-name">{row.name}</span>
+              </button>
+            {:else}
+              <FileRow
+                file={row.file}
+                indent={row.depth * 12}
+                displayLabel={row.file.path.split('/').pop()}
+                selected={selectedPath === row.file.path}
+                onClick={() => onSelectFile?.(row.file.path, false)}
+              />
+            {/if}
+          {/each}
+        </div>
+      {:else}
+        <div class="files-body" class:multi-col={viewMode === 'flat-multi'}>
+          {#if viewMode === 'flat-multi'}
+            <div class="multi-col-header">
+              <span class="checkbox-col"></span>
+              <span class="status-col"></span>
+              <span class="filename-col">Filename</span>
+              <span class="path-col">Path</span>
+            </div>
+          {/if}
+          {#each commitSorted as file (file.path)}
+            <FileRow
+              {file}
+              selected={selectedPath === file.path}
+              multi={viewMode === 'flat-multi'}
+              onClick={() => onSelectFile?.(file.path, false)}
             />
-          </span>
-          <span
-            class="file-path"
-            style="color:{selectedPath === file.path
-              ? 'var(--color-text-white)'
-              : 'var(--color-text-primary)'}">{file.path}</span
-          >
-        </button>
-      {/each}
+          {/each}
+        </div>
+      {/if}
     </div>
   {/if}
 
@@ -437,6 +641,19 @@
             closeContextMenu();
           }}>Create Patch</button
         >
+        {#if stagingMode === 'none'}
+          <button
+            class="context-item"
+            onclick={() => {
+              onToggleExclude?.(contextMenuFiles[0].path);
+              closeContextMenu();
+            }}
+            data-testid="toggle-exclude"
+            >{isExcluded(contextMenuFiles[0].path)
+              ? 'Include in next commit'
+              : 'Exclude from next commit'}</button
+          >
+        {/if}
         <button
           class="context-item"
           onclick={() => {
@@ -553,17 +770,36 @@
     overflow: hidden;
   }
 
-  .file-header {
-    padding: 6px 12px;
-    border-bottom: 1px solid var(--color-border);
-    color: var(--color-text-secondary);
-    font-size: 10px;
-    flex-shrink: 0;
-  }
-
   .files {
     flex: 1;
     overflow-y: auto;
+  }
+
+  .files-body {
+    display: block;
+  }
+
+  .files-body.multi-col {
+    display: grid;
+    grid-template-columns: 12px 16px minmax(120px, 1fr) minmax(120px, 1fr);
+    column-gap: 8px;
+    align-items: center;
+  }
+
+  .multi-col-header {
+    display: grid;
+    grid-template-columns: subgrid;
+    grid-column: 1 / -1;
+    padding: 4px 12px;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: var(--color-bg-surface);
+    position: sticky;
+    top: 0;
+    z-index: 1;
   }
 
   .section-header-row {
@@ -609,60 +845,29 @@
     color: var(--color-text-secondary);
   }
 
-  .file-row {
+  .dir-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     padding: 4px 12px;
     border: none;
     background: none;
+    color: var(--color-text-secondary);
     cursor: pointer;
     width: 100%;
     text-align: left;
     font-size: 11px;
   }
 
-  .file-row:hover {
+  .dir-row:hover {
     background: var(--color-bg-hover);
+    color: var(--color-text-primary);
   }
 
-  .file-row.selected {
-    background: var(--color-bg-selected);
-  }
-
-  .file-status {
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .file-path {
+  .dir-name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .stage-checkbox {
-    flex-shrink: 0;
-    cursor: pointer;
-    accent-color: var(--color-text-accent);
-  }
-
-  .file-btn {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex: 1;
-    border: none;
-    background: none;
-    cursor: pointer;
-    text-align: left;
-    font-size: 11px;
-    padding: 0;
-    min-width: 0;
   }
 
   .commit-info {

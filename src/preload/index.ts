@@ -31,8 +31,15 @@ const api: ElectronAPI = {
       ipcRenderer.invoke(IPC.GIT_UNSTAGE_FILE, path),
     stageAll: () => ipcRenderer.invoke(IPC.GIT_STAGE_ALL),
     unstageAll: () => ipcRenderer.invoke(IPC.GIT_UNSTAGE_ALL),
-    commit: (message: string, amend?: boolean, noVerify?: boolean) =>
-      ipcRenderer.invoke(IPC.GIT_COMMIT, { message, amend, noVerify }),
+    commit: (
+      message: string,
+      opts?: {
+        amend?: boolean;
+        noVerify?: boolean;
+        stageAll?: boolean;
+        exclude?: string[];
+      },
+    ) => ipcRenderer.invoke(IPC.GIT_COMMIT, { message, ...(opts ?? {}) }),
     pull: () => ipcRenderer.invoke(IPC.GIT_PULL),
     push: () => ipcRenderer.invoke(IPC.GIT_PUSH),
     pushBranches: (

@@ -141,10 +141,10 @@ describe('repo-settings', () => {
     it('keeps path and schemaVersion stable even if patch tries to change them', () => {
       const merged = updateRepoSettings(REPO, {
         path: '/malicious/path',
-        schemaVersion: 1,
-      } as Partial<typeof DEFAULT_REPO_SETTINGS>);
+        schemaVersion: 99,
+      } as unknown as Partial<typeof DEFAULT_REPO_SETTINGS>);
       expect(merged.path).toBe(REPO);
-      expect(merged.schemaVersion).toBe(1);
+      expect(merged.schemaVersion).toBe(2);
     });
   });
 
