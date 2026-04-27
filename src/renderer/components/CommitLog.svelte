@@ -44,7 +44,9 @@
   }: Props = $props();
 
   function refLabel(ref: string): string {
-    return ref.replace('tag: ', '');
+    // Drop the "HEAD -> " prefix git emits for the checked-out branch — the
+    // graph already marks HEAD with a halo, so the prefix is just noise.
+    return ref.replace('tag: ', '').replace(/^HEAD -> /, '');
   }
 
   const ROW_HEIGHT = 24;

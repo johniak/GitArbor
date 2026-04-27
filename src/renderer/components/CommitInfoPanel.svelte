@@ -70,7 +70,8 @@
               class="ref-label"
               style="border-color:{refColor(ref)}; background:{refColor(
                 ref,
-              )}22; color:{refColor(ref)}">{ref.replace('tag: ', '')}</span
+              )}22; color:{refColor(ref)}"
+              >{ref.replace('tag: ', '').replace(/^HEAD -> /, '')}</span
             >
           {/each}
         </span>
