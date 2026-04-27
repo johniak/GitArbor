@@ -228,7 +228,7 @@ ipcMain.handle(IPC.GIT_STAGE_ALL, () => getGitService().stageAll());
 ipcMain.handle(IPC.GIT_UNSTAGE_ALL, () => getGitService().unstageAll());
 ipcMain.handle(
   IPC.GIT_COMMIT,
-  (
+  async (
     _event,
     {
       message,
@@ -251,13 +251,20 @@ ipcMain.handle(
       s.general.authorEmail
         ? { name: s.general.authorName, email: s.general.authorEmail }
         : undefined;
-    return getGitService().commit(message, {
-      amend,
-      noVerify,
-      stageAll,
-      exclude,
-      author,
-    });
+    try {
+      return await getGitService().commit(message, {
+        amend,
+        noVerify,
+        stageAll,
+        exclude,
+        author,
+      });
+    } finally {
+      // Pre-commit hooks (e.g. prettier --write) can mutate the working tree
+      // even when commit ultimately fails. Always notify so the renderer
+      // re-fetches working status and the user sees the new state.
+      notifyRepoChanged();
+    }
   },
 );
 ipcMain.handle(IPC.GIT_PULL, () => getGitService().pull());

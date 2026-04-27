@@ -3126,3 +3126,42 @@ test.describe('FileList header — persistence', () => {
     ).toContainText('sorted by path');
   });
 });
+
+// ────────────────────────────────────────────────────────────────────
+// Refresh after failed commit (pre-commit hook side-effects)
+// ────────────────────────────────────────────────────────────────────
+
+test.describe('Commit refresh on hook failure', () => {
+  test('working tree refreshes when a failing pre-commit hook mutates files', async ({
+    window,
+    testRepoPath,
+  }) => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+
+    // README.md is tracked + clean at startup — must not appear in the list.
+    await openFileStatus(window);
+    await expect(
+      window.locator('.file-row .file-path', { hasText: /^README\.md$/ }),
+    ).toHaveCount(0);
+
+    // Install a pre-commit hook that mutates a tracked file and exits 1.
+    const hookPath = path.join(testRepoPath, '.git', 'hooks', 'pre-commit');
+    fs.writeFileSync(
+      hookPath,
+      '#!/bin/sh\necho "modified by hook" >> README.md\nexit 1\n',
+      { mode: 0o755 },
+    );
+
+    await window
+      .locator('textarea[placeholder="Commit message..."]')
+      .fill('test commit');
+    await window.locator('.btn-commit').click();
+
+    // Commit fails silently (hook exit 1). The hook left README.md modified,
+    // so it must surface in the unstaged section once the renderer re-fetches.
+    await expect(
+      window.locator('.file-row .file-path', { hasText: /^README\.md$/ }),
+    ).toBeVisible({ timeout: 5_000 });
+  });
+});
