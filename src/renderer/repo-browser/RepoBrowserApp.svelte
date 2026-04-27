@@ -6,6 +6,7 @@
   import NewRepoMenu from './NewRepoMenu.svelte';
   import CloneDialog from './CloneDialog.svelte';
   import ProgressDialog from '../components/ProgressDialog.svelte';
+  import { themeStore } from '../theme-store.svelte';
 
   let repos = $state<RepoListEntry[]>([]);
   let filter = $state('');
@@ -38,6 +39,7 @@
   let unsubscribeAppSettings: (() => void) | null = null;
 
   onMount(() => {
+    void themeStore.hydrate();
     void refresh();
     void loadProjectFolder();
     unsubscribeAppSettings = window.electronAPI.appSettings.onChanged((s) => {

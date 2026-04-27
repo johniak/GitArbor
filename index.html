@@ -1,9 +1,21 @@
 <!doctype html>
-<html lang="en" data-theme="custom-dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GitArbor</title>
+    <script>
+      // Anti-FOUC: paint with the last-known theme before the bundle loads.
+      // The theme-store overwrites this attribute (and localStorage) once
+      // it reads the truly-resolved theme from main. First-ever launch
+      // falls back to the (prefers-color-scheme) media query in theme.css.
+      try {
+        var t = localStorage.getItem('gitarbor:theme');
+        if (t === 'light' || t === 'dark') {
+          document.documentElement.setAttribute('data-theme', t);
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="app"></div>

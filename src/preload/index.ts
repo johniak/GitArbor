@@ -197,6 +197,15 @@ const api: ElectronAPI = {
       return () => ipcRenderer.off(IPC.APP_SETTINGS_CHANGED, listener);
     },
   },
+  theme: {
+    getResolved: (): Promise<'light' | 'dark'> =>
+      ipcRenderer.invoke(IPC.THEME_GET_RESOLVED),
+    onResolved: (cb: (theme: 'light' | 'dark') => void) => {
+      const listener = (_: unknown, theme: 'light' | 'dark') => cb(theme);
+      ipcRenderer.on(IPC.THEME_RESOLVED, listener);
+      return () => ipcRenderer.off(IPC.THEME_RESOLVED, listener);
+    },
+  },
   platform: process.platform,
 };
 

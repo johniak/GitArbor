@@ -268,7 +268,7 @@ GitArbor feature matrix. `[x]` = done, `[ ]` = planned / missing, `[~]` = partia
 - [x] Cmd+, / Ctrl+, opens Settings window
 - [x] Main window title follows the repo directory name
 - [x] Terminal integration — toolbar opens platform-native terminal in repo cwd
-- [ ] Light theme / theme switcher / auto from system
+- [x] Light theme / theme switcher / auto from system (Settings → Appearance: System / Light / Dark; Electron `nativeTheme` so native chrome follows; cross-window propagation; anti-FOUC localStorage paint)
 - [ ] Font family / font size customization
 - [x] Staging mode switcher (no-staging / fluid / split — `git commit -A` with per-file Exclude in no-staging mode)
 - [ ] Compact mode (denser log)

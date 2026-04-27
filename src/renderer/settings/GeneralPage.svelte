@@ -20,6 +20,7 @@
 
   let projectFolder = $state(settings.general.projectFolder);
   let overrideAuthorOnCommit = $state(settings.general.overrideAuthorOnCommit);
+  let appearance = $state(settings.general.appearance);
 
   // What the inputs actually show: app values while override is on, otherwise
   // the read-only global values.
@@ -124,6 +125,24 @@
   </fieldset>
 
   <fieldset class="group">
+    <legend>Appearance</legend>
+
+    <div class="field">
+      <label for="settings-appearance">Theme:</label>
+      <select
+        id="settings-appearance"
+        bind:value={appearance}
+        onchange={() => onChange({ appearance })}
+        data-testid="settings-appearance"
+      >
+        <option value="system">Use system appearance</option>
+        <option value="light">Light Mode</option>
+        <option value="dark">Dark Mode</option>
+      </select>
+    </div>
+  </fieldset>
+
+  <fieldset class="group">
     <legend>Miscellaneous</legend>
 
     <div class="field">
@@ -224,6 +243,22 @@
     opacity: 0.6;
     cursor: not-allowed;
     color: var(--color-text-secondary);
+  }
+
+  .field select {
+    background: var(--color-bg-base);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-primary);
+    padding: 5px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    outline: none;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .field select:focus {
+    border-color: var(--color-text-accent);
   }
 
   .dir-row {

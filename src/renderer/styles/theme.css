@@ -1,5 +1,6 @@
-:root {
-  /* VS Code Dark+ palette */
+/* Default + explicit dark — VS Code Dark+ palette */
+:root,
+:root[data-theme='dark'] {
   --color-bg-base: #1e1e1e;
   --color-bg-surface: #252526;
   --color-bg-toolbar: #2d2d2d;
@@ -28,4 +29,67 @@
 
   --splitter-size: 4px;
   --splitter-line-size: 1px;
+}
+
+/* Light — VS Code Light+ palette */
+:root[data-theme='light'] {
+  --color-bg-base: #ffffff;
+  --color-bg-surface: #f3f3f3;
+  --color-bg-toolbar: #ececec;
+  --color-bg-hover: #e8e8e8;
+  --color-bg-selected: #cce4f7;
+
+  --color-border: #e0e0e0;
+
+  --color-text-primary: #333333;
+  --color-text-secondary: #6e6e6e;
+  --color-text-accent: #0066b8;
+  --color-text-accent-light: #1d6fb8;
+  --color-text-white: #000000;
+
+  --color-diff-added: #2c8b2c;
+  --color-diff-deleted: #c93030;
+  --color-diff-added-bg: rgba(44, 139, 44, 0.12);
+  --color-diff-deleted-bg: rgba(201, 48, 48, 0.1);
+
+  --color-syntax-keyword: #0000ff;
+  --color-syntax-string: #a31515;
+  --color-syntax-variable: #001080;
+  --color-syntax-comment: #008000;
+
+  --color-icon: #0066b8;
+}
+
+/* Pre-hydrate fallback: when no [data-theme] attribute is set yet, mirror
+   the OS preference so the initial paint isn't a flash of dark on light
+   systems (or vice versa). The renderer's theme-store overwrites the
+   attribute as soon as it queries the resolved theme. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --color-bg-base: #ffffff;
+    --color-bg-surface: #f3f3f3;
+    --color-bg-toolbar: #ececec;
+    --color-bg-hover: #e8e8e8;
+    --color-bg-selected: #cce4f7;
+
+    --color-border: #e0e0e0;
+
+    --color-text-primary: #333333;
+    --color-text-secondary: #6e6e6e;
+    --color-text-accent: #0066b8;
+    --color-text-accent-light: #1d6fb8;
+    --color-text-white: #000000;
+
+    --color-diff-added: #2c8b2c;
+    --color-diff-deleted: #c93030;
+    --color-diff-added-bg: rgba(44, 139, 44, 0.12);
+    --color-diff-deleted-bg: rgba(201, 48, 48, 0.1);
+
+    --color-syntax-keyword: #0000ff;
+    --color-syntax-string: #a31515;
+    --color-syntax-variable: #001080;
+    --color-syntax-comment: #008000;
+
+    --color-icon: #0066b8;
+  }
 }

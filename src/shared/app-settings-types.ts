@@ -1,5 +1,8 @@
+/** UI theme preference. `system` follows the OS via Electron's nativeTheme. */
+export type Appearance = 'system' | 'light' | 'dark';
+
 export interface AppSettings {
-  schemaVersion: 1;
+  schemaVersion: 2;
   general: {
     authorName: string;
     authorEmail: string;
@@ -15,15 +18,18 @@ export interface AppSettings {
      * "use the OS default" (typically ~).
      */
     projectFolder: string;
+    /** Theme picker — `system` follows OS appearance changes in real time. */
+    appearance: Appearance;
   };
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   general: {
     authorName: '',
     authorEmail: '',
     overrideAuthorOnCommit: false,
     projectFolder: '',
+    appearance: 'system',
   },
 };

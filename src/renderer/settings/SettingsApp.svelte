@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import type { AppSettings } from '../../shared/ipc';
   import SettingsTabs, { type Tab } from './SettingsTabs.svelte';
   import GeneralPage from './GeneralPage.svelte';
+  import { themeStore } from '../theme-store.svelte';
 
   let currentTab = $state<Tab>('general');
   let settings = $state<AppSettings | null>(null);
@@ -9,6 +11,10 @@
   async function load() {
     settings = await window.electronAPI.appSettings.get();
   }
+
+  onMount(() => {
+    void themeStore.hydrate();
+  });
 
   load();
 

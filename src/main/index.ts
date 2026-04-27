@@ -25,6 +25,11 @@ import {
   prepareRebasePlan,
   runInteractiveRebase,
 } from './interactive-rebase';
+import {
+  applyAppearance,
+  getResolvedTheme,
+  onResolvedThemeChange,
+} from './theme';
 import { IPC } from '../shared/ipc';
 import type { DeepPartial, RepoSettings, AppSettings } from '../shared/ipc';
 import { DEFAULT_REPO_SETTINGS } from '../shared/ipc';
@@ -762,6 +767,12 @@ ipcMain.handle(
   IPC.APP_SETTINGS_UPDATE,
   (_event, patch: DeepPartial<AppSettings>): AppSettings => {
     const next = updateAppSettings(patch);
+    // If the appearance changed, hand off to nativeTheme. The
+    // `nativeTheme.on('updated')` listener registered in app.ready will
+    // broadcast the new resolved theme to every renderer.
+    if (patch.general?.appearance) {
+      applyAppearance(next.general.appearance);
+    }
     // Broadcast so already-open windows (e.g. Repository Browser reading
     // general.projectFolder) can pick up the change without a restart.
     for (const win of BrowserWindow.getAllWindows()) {
@@ -771,6 +782,8 @@ ipcMain.handle(
     return next;
   },
 );
+
+ipcMain.handle(IPC.THEME_GET_RESOLVED, () => getResolvedTheme());
 
 ipcMain.handle(IPC.WINDOW_SHOW_BROWSER, () => {
   showRepoBrowser();
@@ -791,6 +804,17 @@ app.on('ready', async () => {
     configureRepoSettings(userData);
     configureAppSettings(userData);
     configureInteractiveRebase(path.join(userData, 'interactive-rebase'));
+
+    // Apply the persisted appearance preference + listen for OS theme
+    // changes (and any subsequent applyAppearance calls). Each event
+    // pushes the resolved theme to every open renderer.
+    applyAppearance(loadAppSettings().general.appearance);
+    onResolvedThemeChange((resolved) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (win.isDestroyed()) continue;
+        win.webContents.send(IPC.THEME_RESOLVED, resolved);
+      }
+    });
     const dbPath = path.join(userData, 'repositories.db');
     const db = await createDatabase(dbPath);
     repoManager = new RepoManager(db);

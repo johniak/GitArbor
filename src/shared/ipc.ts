@@ -131,6 +131,8 @@ export const IPC = {
   APP_SETTINGS_GET: 'app-settings:get',
   APP_SETTINGS_UPDATE: 'app-settings:update',
   APP_SETTINGS_CHANGED: 'app-settings:changed',
+  THEME_GET_RESOLVED: 'theme:get-resolved',
+  THEME_RESOLVED: 'theme:resolved',
 } as const;
 
 /** Request/response types per IPC channel */
@@ -295,11 +297,17 @@ export interface AppSettingsAPI {
   onChanged(cb: (settings: AppSettings) => void): () => void;
 }
 
+export interface ThemeAPI {
+  getResolved(): Promise<'light' | 'dark'>;
+  onResolved(cb: (theme: 'light' | 'dark') => void): () => void;
+}
+
 export interface ElectronAPI {
   git: GitAPI;
   repo: RepoAPI;
   settings: SettingsAPI;
   appSettings: AppSettingsAPI;
+  theme: ThemeAPI;
   platform: string;
 }
 

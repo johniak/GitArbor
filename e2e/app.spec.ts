@@ -3440,3 +3440,91 @@ test.describe('Interactive rebase', () => {
     ).toBeVisible({ timeout: 5_000 });
   });
 });
+
+// ────────────────────────────────────────────────────────────────────
+// Appearance (light / dark / system)
+// ────────────────────────────────────────────────────────────────────
+
+test.describe('Appearance', () => {
+  async function getDataTheme(window: import('playwright').Page) {
+    return window.evaluate(() =>
+      document.documentElement.getAttribute('data-theme'),
+    );
+  }
+
+  test('default boot resolves a theme attribute matching the OS preference', async ({
+    window,
+  }) => {
+    // After hydration the renderer always has a concrete theme.
+    await expect
+      .poll(() => getDataTheme(window), { timeout: 10_000 })
+      .toMatch(/^(light|dark)$/);
+  });
+
+  test('switching to Light Mode applies data-theme="light"', async ({
+    window,
+  }) => {
+    await window.evaluate(() =>
+      window.electronAPI.appSettings.update({
+        general: { appearance: 'light' },
+      }),
+    );
+    await expect.poll(() => getDataTheme(window)).toBe('light');
+  });
+
+  test('switching to Dark Mode applies data-theme="dark"', async ({
+    window,
+  }) => {
+    await window.evaluate(() =>
+      window.electronAPI.appSettings.update({
+        general: { appearance: 'dark' },
+      }),
+    );
+    await expect.poll(() => getDataTheme(window)).toBe('dark');
+  });
+
+  test('background colour reflects the applied theme', async ({ window }) => {
+    await window.evaluate(() =>
+      window.electronAPI.appSettings.update({
+        general: { appearance: 'light' },
+      }),
+    );
+    await expect.poll(() => getDataTheme(window)).toBe('light');
+    const lightBg = await window.evaluate(() =>
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--color-bg-base')
+        .trim()
+        .toLowerCase(),
+    );
+    // Browsers may compress #ffffff → #fff; both mean white.
+    expect(['#ffffff', '#fff']).toContain(lightBg);
+
+    await window.evaluate(() =>
+      window.electronAPI.appSettings.update({
+        general: { appearance: 'dark' },
+      }),
+    );
+    await expect.poll(() => getDataTheme(window)).toBe('dark');
+    const darkBg = await window.evaluate(() =>
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--color-bg-base')
+        .trim()
+        .toLowerCase(),
+    );
+    expect(darkBg).toBe('#1e1e1e');
+  });
+
+  test('appearance preference persists across reload', async ({ window }) => {
+    await window.evaluate(() =>
+      window.electronAPI.appSettings.update({
+        general: { appearance: 'light' },
+      }),
+    );
+    await expect.poll(() => getDataTheme(window)).toBe('light');
+
+    await window.reload();
+    await expect
+      .poll(() => getDataTheme(window), { timeout: 10_000 })
+      .toBe('light');
+  });
+});
