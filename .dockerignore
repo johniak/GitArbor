@@ -1,0 +1,32 @@
+# Build artefacts and tooling state — recreated inside the container.
+node_modules
+out
+.vite
+dist
+.svelte-kit
+
+# Test outputs — only meaningful inside the run, copied out via volume.
+test-results
+playwright-report
+
+# Local-only caches.
+.bun
+.cache
+
+# VCS — git is needed inside the container (test fixtures call `git`),
+# but we don't need the .git history. simple-git only operates on the
+# temp repos created by the e2e fixture.
+.git
+
+# Editor state / agent state — gitignored anyway.
+.claude
+.serena
+.superpowers
+.idea
+.vscode
+
+# OS noise.
+.DS_Store
+
+# Local notes, screenshots, etc.
+screenshot.jpg

@@ -32,6 +32,7 @@
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "test:e2e": "E2E_TEST=1 electron-forge package && playwright test",
+    "test:e2e:docker": "scripts/docker-e2e.sh",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
