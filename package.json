@@ -1,7 +1,7 @@
 {
   "name": "gitarbor",
   "productName": "GitArbor",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "A modern graphical Git client for Linux, macOS, and Windows.",
   "license": "MIT",
   "author": {
