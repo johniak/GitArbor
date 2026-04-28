@@ -554,6 +554,30 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
+  IPC.GIT_GET_FILE_HISTORY,
+  (
+    _event,
+    {
+      path,
+      followRenames,
+      ref,
+    }: { path: string; followRenames?: boolean; ref?: string },
+  ) => getGitService().getFileHistory({ path, followRenames, ref }),
+);
+
+ipcMain.handle(
+  IPC.GIT_GET_BLAME,
+  (_event, { path, ref }: { path: string; ref?: string }) =>
+    getGitService().getBlame({ path, ref }),
+);
+
+ipcMain.handle(
+  IPC.GIT_GET_FILE_AT_COMMIT,
+  (_event, { path, ref }: { path: string; ref: string }) =>
+    getGitService().getFileAtCommit({ path, ref }),
+);
+
+ipcMain.handle(
   IPC.GIT_ARCHIVE,
   async (
     _event,

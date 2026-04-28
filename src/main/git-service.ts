@@ -16,6 +16,7 @@ import type {
   FileStatus,
 } from '../renderer/types';
 import { relativeDate } from '../shared/date-utils';
+import { parseBlamePorcelain, type BlameLine } from '../shared/blame-parser';
 
 const COMMIT_FORMAT = {
   hash: '%H',
@@ -232,6 +233,90 @@ export class GitService {
   async getCommitBody(hash: string): Promise<string> {
     const raw = await this.git.raw(['log', '-1', '--format=%b', hash]);
     return raw.trim();
+  }
+
+  /**
+   * `git log [--follow] -- <path>` — commits that touched a single file.
+   * Used by the File Log dialog. Reuses the same record format as
+   * `getCommits` so the renderer can treat results identically.
+   *
+   * `followRenames=true` adds `--follow` so history continues through
+   * a single rename (git's blame-rename heuristic; can't follow more
+   * than one per call).
+   */
+  async getFileHistory(opts: {
+    path: string;
+    followRenames?: boolean;
+    ref?: string;
+  }): Promise<Commit[]> {
+    const keys = Object.keys(COMMIT_FORMAT) as (keyof typeof COMMIT_FORMAT)[];
+    const formatStr = keys.map((k) => COMMIT_FORMAT[k]).join('%x00');
+
+    const args = ['log', `--format=${formatStr}`];
+    if (opts.followRenames) args.push('--follow');
+    if (opts.ref) args.push(opts.ref);
+    args.push('--', opts.path);
+
+    let raw: string;
+    try {
+      raw = await this.git.raw(args);
+    } catch {
+      return [];
+    }
+    if (!raw.trim()) return [];
+
+    return raw
+      .trim()
+      .split('\n')
+      .map((line) => {
+        const parts = line.split('\x00');
+        const record: Record<string, string> = {};
+        keys.forEach((key, i) => {
+          record[key] = parts[i] ?? '';
+        });
+        return {
+          hash: record.hash,
+          hashShort: record.abbrevHash,
+          message: record.message,
+          authorName: record.authorName,
+          authorEmail: record.authorEmail,
+          date: record.date,
+          dateRelative: relativeDate(record.date),
+          parents: record.parents
+            ? record.parents.split(' ').filter(Boolean)
+            : [],
+          refs: record.refs ? record.refs.split(', ').filter(Boolean) : [],
+        };
+      });
+  }
+
+  /**
+   * `git blame --porcelain [<ref>] -- <path>` — per-line authorship.
+   * Output parsed by the shared porcelain parser. Returns `[]` rather
+   * than throwing on errors so the renderer can show an empty state.
+   */
+  async getBlame(opts: { path: string; ref?: string }): Promise<BlameLine[]> {
+    const args = ['blame', '--porcelain'];
+    if (opts.ref) args.push(opts.ref);
+    args.push('--', opts.path);
+    try {
+      const raw = await this.git.raw(args);
+      return parseBlamePorcelain(raw);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * `git show <ref>:<path>` — read a file's contents at a specific
+   * commit. Used by the Annotate view to source the line text.
+   */
+  async getFileAtCommit(opts: { path: string; ref: string }): Promise<string> {
+    try {
+      return await this.git.raw(['show', `${opts.ref}:${opts.path}`]);
+    } catch {
+      return '';
+    }
   }
 
   async getCommitFiles(hash: string): Promise<ChangedFile[]> {

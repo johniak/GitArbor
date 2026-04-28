@@ -137,6 +137,19 @@ const api: ElectronAPI = {
       ipcRenderer.invoke(IPC.GIT_GET_REBASE_PLAN, baseHash),
     runInteractiveRebase: (plan: import('../shared/rebase-types').RebasePlan) =>
       ipcRenderer.invoke(IPC.GIT_RUN_INTERACTIVE_REBASE, plan),
+    getFileHistory: (
+      path: string,
+      opts?: { followRenames?: boolean; ref?: string },
+    ) =>
+      ipcRenderer.invoke(IPC.GIT_GET_FILE_HISTORY, {
+        path,
+        followRenames: opts?.followRenames ?? false,
+        ref: opts?.ref,
+      }),
+    getBlame: (path: string, ref?: string) =>
+      ipcRenderer.invoke(IPC.GIT_GET_BLAME, { path, ref }),
+    getFileAtCommit: (path: string, ref: string) =>
+      ipcRenderer.invoke(IPC.GIT_GET_FILE_AT_COMMIT, { path, ref }),
     archiveCommit: (hash: string, defaultName: string) =>
       ipcRenderer.invoke(IPC.GIT_ARCHIVE, { hash, defaultName }),
     createPatchFromCommit: (hash: string, defaultName: string) =>

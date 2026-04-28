@@ -104,8 +104,8 @@ GitArbor feature matrix. `[x]` = done, `[ ]` = planned / missing, `[~]` = partia
 - [ ] Filter by author
 - [ ] Filter by branch / tag
 - [x] Filter by date range (in Search view, From / To)
-- [ ] File blame / annotate (per-line authorship)
-- [ ] File history (`log --follow <path>`)
+- [x] File blame / annotate (per-line authorship)
+- [x] File history (`log --follow <path>`)
 - [ ] Compare two commits
 - [ ] Jump-to-commit by hash / short hash
 - [ ] Author avatars (Gravatar / custom)

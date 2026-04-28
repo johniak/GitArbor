@@ -57,6 +57,8 @@
     onStatusFilter?: (filter: FileStatusFilter) => void;
     onStagingMode?: (mode: StagingMode) => void;
     onToggleExclude?: (path: string) => void;
+    onOpenFileLog?: (path: string, ref?: string) => void;
+    onOpenAnnotate?: (path: string, ref?: string) => void;
   };
 
   let {
@@ -90,6 +92,8 @@
     onStatusFilter,
     onStagingMode,
     onToggleExclude,
+    onOpenFileLog,
+    onOpenAnnotate,
   }: Props = $props();
 
   let stagedExpanded = $state(true);
@@ -273,10 +277,9 @@
     status: FileStatus,
     staged: boolean,
   ) {
-    if (!isWorkingChanges) return;
     e.preventDefault();
-    const x = Math.min(e.clientX, window.innerWidth - 170);
-    const y = Math.min(e.clientY, window.innerHeight - 150);
+    const x = Math.min(e.clientX, window.innerWidth - 200);
+    const y = Math.min(e.clientY, window.innerHeight - 240);
 
     const key = selKey(path, staged);
     if (selectedKeys.has(key) && selectedKeys.size > 1) {
@@ -518,6 +521,8 @@
                 displayLabel={row.file.path.split('/').pop()}
                 selected={selectedPath === row.file.path}
                 onClick={() => onSelectFile?.(row.file.path, false)}
+                onContextMenu={(e) =>
+                  openContextMenu(e, row.file.path, row.file.status, false)}
               />
             {/if}
           {/each}
@@ -538,6 +543,8 @@
               selected={selectedPath === file.path}
               multi={viewMode === 'flat-multi'}
               onClick={() => onSelectFile?.(file.path, false)}
+              onContextMenu={(e) =>
+                openContextMenu(e, file.path, file.status, false)}
             />
           {/each}
         </div>
@@ -624,48 +631,74 @@
             closeContextMenu();
           }}>Open</button
         >
-        <button class="context-item" onclick={handleCopyPath}>Copy Path</button>
-        <button
-          class="context-item"
-          onclick={() => {
-            onCreatePatch?.(
-              contextMenuFiles[0].path,
-              contextMenuFiles[0].staged,
-            );
-            closeContextMenu();
-          }}>Create Patch</button
-        >
-        {#if stagingMode === 'none'}
+        {#if contextMenuFiles[0].status !== '?'}
           <button
             class="context-item"
             onclick={() => {
-              onToggleExclude?.(contextMenuFiles[0].path);
+              onOpenFileLog?.(
+                contextMenuFiles[0].path,
+                isWorkingChanges ? undefined : selectedCommit?.hash,
+              );
               closeContextMenu();
             }}
-            data-testid="toggle-exclude"
-            >{isExcluded(contextMenuFiles[0].path)
-              ? 'Include in next commit'
-              : 'Exclude from next commit'}</button
+            data-testid="ctx-log-selected">Log Selected…</button
+          >
+          <button
+            class="context-item"
+            onclick={() => {
+              onOpenAnnotate?.(
+                contextMenuFiles[0].path,
+                isWorkingChanges ? undefined : selectedCommit?.hash,
+              );
+              closeContextMenu();
+            }}
+            data-testid="ctx-annotate-selected">Annotate Selected…</button
           >
         {/if}
-        <button
-          class="context-item"
-          onclick={() => {
-            onIgnoreFile?.(contextMenuFiles[0].path);
-            closeContextMenu();
-          }}>Ignore</button
-        >
-        <button
-          class="context-item context-item-danger"
-          onclick={() => {
-            onDiscardFile?.(
-              contextMenuFiles[0].path,
-              contextMenuFiles[0].status,
-              contextMenuFiles[0].staged,
-            );
-            closeContextMenu();
-          }}>Discard</button
-        >
+        <button class="context-item" onclick={handleCopyPath}>Copy Path</button>
+        {#if isWorkingChanges}
+          <button
+            class="context-item"
+            onclick={() => {
+              onCreatePatch?.(
+                contextMenuFiles[0].path,
+                contextMenuFiles[0].staged,
+              );
+              closeContextMenu();
+            }}>Create Patch</button
+          >
+          {#if stagingMode === 'none'}
+            <button
+              class="context-item"
+              onclick={() => {
+                onToggleExclude?.(contextMenuFiles[0].path);
+                closeContextMenu();
+              }}
+              data-testid="toggle-exclude"
+              >{isExcluded(contextMenuFiles[0].path)
+                ? 'Include in next commit'
+                : 'Exclude from next commit'}</button
+            >
+          {/if}
+          <button
+            class="context-item"
+            onclick={() => {
+              onIgnoreFile?.(contextMenuFiles[0].path);
+              closeContextMenu();
+            }}>Ignore</button
+          >
+          <button
+            class="context-item context-item-danger"
+            onclick={() => {
+              onDiscardFile?.(
+                contextMenuFiles[0].path,
+                contextMenuFiles[0].status,
+                contextMenuFiles[0].staged,
+              );
+              closeContextMenu();
+            }}>Discard</button
+          >
+        {/if}
       {:else}
         <button
           class="context-item"

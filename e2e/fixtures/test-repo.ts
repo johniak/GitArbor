@@ -46,6 +46,11 @@ export async function createTestRepo(): Promise<TestRepo> {
   // Ensure branch is named 'main' regardless of system git config
   await git.branch(['-M', 'main']);
   await git.addTag('v0.1.0');
+  // Capture the initial commit so the file-log fixture can branch from
+  // it later (rather than from main's tip — that would put its commits
+  // ahead of `feat: local only commit` in the All Branches graph and
+  // push other commits out of the virtual-scroll window).
+  const initialCommitHash = (await git.revparse(['HEAD'])).trim();
 
   // Second commit
   fs.writeFileSync(
@@ -136,6 +141,96 @@ export async function createTestRepo(): Promise<TestRepo> {
   );
   await git.add('.');
   await git.commit('feat: local only commit (ahead of origin)');
+
+  // ── feature/file-log-test branch ──────────────────────────────
+  // Built here (during createTestRepo, before Electron boots) so the
+  // multi-author / rename / binary / large-file scenarios for File Log
+  // and Annotate dialogs are deterministic. Doing this inside the test
+  // body races the app's main-process simple-git over `.git/index.lock`,
+  // hence this baked-in approach.
+  //
+  // Branch from the very first commit AND backdate every commit to 1990
+  // so this fixture's chain doesn't crowd out main's recent commits in
+  // the chronological/topological "All Branches" view that other tests
+  // rely on (they look up rows like `feat: local only commit` by text
+  // and the commit-log uses virtual scroll).
+  await git.checkout(['-b', 'feature/file-log-test', initialCommitHash]);
+
+  // Each commit gets a unique 1990 timestamp (one second apart) so they
+  // sort deterministically within the file-log fixture itself.
+  const oldDateAt = (offset: number) => {
+    const d = new Date(Date.UTC(1990, 0, 1, 0, 0, offset));
+    return d.toISOString();
+  };
+  const oldGit = (offset: number) =>
+    git
+      .env('GIT_AUTHOR_DATE', oldDateAt(offset))
+      .env('GIT_COMMITTER_DATE', oldDateAt(offset));
+
+  fs.mkdirSync(path.join(workDir, 'docs'), { recursive: true });
+  fs.writeFileSync(
+    path.join(workDir, 'docs', 'walkthrough.ts'),
+    `// walkthrough\nexport function welcome(name: string): string {\n  return "Hi, " + name;\n}\n`,
+  );
+  await git.add('docs/walkthrough.ts');
+  await oldGit(0).commit('docs: add walkthrough');
+
+  await git.addConfig('user.name', 'Other Dev', false);
+  await git.addConfig('user.email', 'other@test.com', false);
+  fs.appendFileSync(
+    path.join(workDir, 'docs', 'walkthrough.ts'),
+    `\nexport const VERSION = 1;\nexport const NAME = "demo";\n`,
+  );
+  await git.add('docs/walkthrough.ts');
+  await oldGit(1).commit('docs: add VERSION + NAME');
+
+  await git.addConfig('user.name', 'Test User', false);
+  await git.addConfig('user.email', 'test@test.com', false);
+  fs.renameSync(
+    path.join(workDir, 'docs', 'walkthrough.ts'),
+    path.join(workDir, 'docs', 'guide.ts'),
+  );
+  await git.add(['-A', 'docs/']);
+  await oldGit(2).commit('docs: rename walkthrough → guide');
+
+  await git.addConfig('user.name', 'Other Dev', false);
+  await git.addConfig('user.email', 'other@test.com', false);
+  let guideBody = fs.readFileSync(
+    path.join(workDir, 'docs', 'guide.ts'),
+    'utf-8',
+  );
+  guideBody = guideBody.replace('"demo"', '"guide"');
+  fs.writeFileSync(path.join(workDir, 'docs', 'guide.ts'), guideBody);
+  await git.add('docs/guide.ts');
+  await oldGit(3).commit('docs: rename demo → guide');
+
+  await git.addConfig('user.name', 'Test User', false);
+  await git.addConfig('user.email', 'test@test.com', false);
+
+  // Binary placeholder — PNG header + IHDR start triggers binary detection.
+  fs.writeFileSync(
+    path.join(workDir, 'docs', 'logo.png'),
+    Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+      0x49, 0x48, 0x44, 0x52,
+    ]),
+  );
+  await git.add('docs/logo.png');
+  await oldGit(4).commit('docs: add binary logo');
+
+  // Big plaintext file for virtualisation (2k unique lines).
+  const bigLines: string[] = [];
+  for (let i = 1; i <= 2000; i++) bigLines.push(`line ${i}: lorem ipsum`);
+  fs.writeFileSync(
+    path.join(workDir, 'docs', 'big.txt'),
+    bigLines.join('\n') + '\n',
+  );
+  await git.add('docs/big.txt');
+  await oldGit(5).commit('docs: add big.txt');
+
+  // Back to main so the rest of createTestRepo's main-branch state
+  // (stash, dirty working tree) lands as before.
+  await git.checkout('main');
 
   // Create a stash for testing
   fs.writeFileSync(path.join(workDir, 'wip.ts'), 'export const wip = true;\n');

@@ -25,6 +25,8 @@
   import ConflictBanner from './components/ConflictBanner.svelte';
   import DeleteBranchDialog from './components/DeleteBranchDialog.svelte';
   import InteractiveRebaseDialog from './components/InteractiveRebaseDialog.svelte';
+  import FileLogDialog from './components/FileLogDialog.svelte';
+  import AnnotateDialog from './components/AnnotateDialog.svelte';
   import type {
     RebasePlan,
     RebaseStep,
@@ -209,6 +211,28 @@
     baseSubject: string;
     initialSteps: RebaseStep[];
   } | null>(null);
+  let fileLogDialog = $state<{
+    path: string;
+    initialHash?: string;
+    ref?: string;
+  } | null>(null);
+  let annotateDialog = $state<{ path: string; ref?: string } | null>(null);
+
+  function handleOpenFileLog(path: string, ref?: string) {
+    fileLogDialog = { path, ref };
+  }
+  function handleOpenAnnotate(path: string, ref?: string) {
+    annotateDialog = { path, ref };
+  }
+  function handleAnnotateOpenFileLog(path: string, hash: string) {
+    // Carry the annotate's ref through so file-log walks the same
+    // branch context (the file may not exist on HEAD). The clicked
+    // commit hash is also a safe ref — use the annotate's ref when
+    // present, otherwise fall back to the hash itself.
+    const ref = annotateDialog?.ref ?? hash;
+    annotateDialog = null;
+    fileLogDialog = { path, initialHash: hash, ref };
+  }
   let contextMenu = $state<{
     hash: string;
     subject: string;
@@ -1431,6 +1455,8 @@
                 onStatusFilter={setWorkingStatusFilter}
                 onStagingMode={setWorkingStagingMode}
                 onToggleExclude={toggleExclude}
+                onOpenFileLog={handleOpenFileLog}
+                onOpenAnnotate={handleOpenAnnotate}
               />
             </div>
 
@@ -1485,6 +1511,8 @@
               onOpenFile={handleOpenFile}
               onViewMode={setHistoricalViewMode}
               onSortMode={setHistoricalSortMode}
+              onOpenFileLog={handleOpenFileLog}
+              onOpenAnnotate={handleOpenAnnotate}
             />
           </div>
 
@@ -1551,6 +1579,8 @@
               onStatusFilter={setWorkingStatusFilter}
               onStagingMode={setWorkingStagingMode}
               onToggleExclude={toggleExclude}
+              onOpenFileLog={handleOpenFileLog}
+              onOpenAnnotate={handleOpenAnnotate}
             />
           </div>
 
@@ -1770,6 +1800,24 @@
     initialSteps={interactiveRebaseDialog.initialSteps}
     onConfirm={handleInteractiveRebaseConfirm}
     onCancel={() => (interactiveRebaseDialog = null)}
+  />
+{/if}
+
+{#if fileLogDialog}
+  <FileLogDialog
+    path={fileLogDialog.path}
+    initialHash={fileLogDialog.initialHash}
+    ref={fileLogDialog.ref}
+    onCancel={() => (fileLogDialog = null)}
+  />
+{/if}
+
+{#if annotateDialog}
+  <AnnotateDialog
+    path={annotateDialog.path}
+    ref={annotateDialog.ref}
+    onCancel={() => (annotateDialog = null)}
+    onOpenFileLog={handleAnnotateOpenFileLog}
   />
 {/if}
 

@@ -23,6 +23,7 @@ export type {
   RebaseStep,
   RunInteractiveRebaseResult,
 } from './rebase-types';
+export type { BlameLine } from './blame-parser';
 
 export type { DeepPartial } from './deep-merge';
 export type { RepoSettings } from './repo-settings-types';
@@ -100,6 +101,9 @@ export const IPC = {
   GIT_CONTINUE_OPERATION: 'git:continue-operation',
   GIT_GET_REBASE_PLAN: 'git:get-rebase-plan',
   GIT_RUN_INTERACTIVE_REBASE: 'git:run-interactive-rebase',
+  GIT_GET_FILE_HISTORY: 'git:get-file-history',
+  GIT_GET_BLAME: 'git:get-blame',
+  GIT_GET_FILE_AT_COMMIT: 'git:get-file-at-commit',
   GIT_DELETE_BRANCH: 'git:delete-branch',
   GIT_SEARCH_COMMITS: 'git:search-commits',
   GIT_ARCHIVE: 'git:archive',
@@ -222,6 +226,15 @@ export interface GitAPI {
   continueOperation(): Promise<{ error?: string }>;
   getRebasePlan(baseHash: string): Promise<RebaseStep[]>;
   runInteractiveRebase(plan: RebasePlan): Promise<RunInteractiveRebaseResult>;
+  getFileHistory(
+    path: string,
+    opts?: { followRenames?: boolean; ref?: string },
+  ): Promise<Commit[]>;
+  getBlame(
+    path: string,
+    ref?: string,
+  ): Promise<import('./blame-parser').BlameLine[]>;
+  getFileAtCommit(path: string, ref: string): Promise<string>;
   archiveCommit(
     hash: string,
     defaultName: string,

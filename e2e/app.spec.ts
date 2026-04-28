@@ -1347,7 +1347,7 @@ test.describe('File Context Menu', () => {
     ).toBeVisible({ timeout: 5_000 });
   }
 
-  test('right-click file shows context menu with 5 items', async ({
+  test('right-click file shows context menu with 7 items', async ({
     window,
   }) => {
     await openWorkingChanges(window);
@@ -1355,12 +1355,14 @@ test.describe('File Context Menu', () => {
     await fileRow.click({ button: 'right' });
     await expect(window.locator('.file-context-menu')).toBeVisible();
     const items = window.locator('.context-item');
-    await expect(items).toHaveCount(5);
+    await expect(items).toHaveCount(7);
     await expect(items.nth(0)).toHaveText('Open');
-    await expect(items.nth(1)).toHaveText('Copy Path');
-    await expect(items.nth(2)).toHaveText('Create Patch');
-    await expect(items.nth(3)).toHaveText('Ignore');
-    await expect(items.nth(4)).toHaveText('Discard');
+    await expect(items.nth(1)).toHaveText('Log Selected…');
+    await expect(items.nth(2)).toHaveText('Annotate Selected…');
+    await expect(items.nth(3)).toHaveText('Copy Path');
+    await expect(items.nth(4)).toHaveText('Create Patch');
+    await expect(items.nth(5)).toHaveText('Ignore');
+    await expect(items.nth(6)).toHaveText('Discard');
   });
 
   test('escape closes context menu', async ({ window }) => {
@@ -3526,5 +3528,454 @@ test.describe('Appearance', () => {
     await expect
       .poll(() => getDataTheme(window), { timeout: 10_000 })
       .toBe('light');
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────
+// File log + Annotate dialogs
+// ────────────────────────────────────────────────────────────────────
+
+async function setupFileLogBranch(window: import('playwright').Page) {
+  // The file-log scenario is baked into createTestRepo (running before
+  // Electron boots, so it can't race the app's main process over
+  // .git/index.lock). The graph defaults to "All Branches", so commits
+  // on feature/file-log-test are visible without an explicit checkout
+  // (which would fail anyway against the dirty working tree the working-
+  // tree tests depend on).
+  await expect(
+    window.locator('.commit-row', { hasText: 'docs: rename demo → guide' }),
+  ).toBeVisible({ timeout: 20_000 });
+}
+
+/**
+ * Click a commit row whose subject contains `subject`, then wait for the
+ * commit-detail FileList to populate.
+ */
+async function selectCommitBySubject(
+  window: import('playwright').Page,
+  subject: string,
+) {
+  // The file-log fixture commits are intentionally backdated to 1990 so
+  // they land at the bottom of the All-Branches graph (this keeps main's
+  // commits in the initial virtual-scroll viewport for unrelated tests).
+  // Walk the .rows container by viewport-sized steps until the target
+  // commit is mounted, then click it.
+  const row = window.locator('.commit-row', { hasText: subject });
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    if ((await row.count()) > 0) break;
+    await window.locator('.rows').evaluate((el) => {
+      el.scrollTop = Math.min(
+        el.scrollTop + el.clientHeight * 0.8,
+        el.scrollHeight,
+      );
+    });
+    await window.waitForTimeout(80);
+  }
+  await expect(row.first()).toBeVisible({ timeout: 10_000 });
+  await row.first().scrollIntoViewIfNeeded();
+  await row.first().dispatchEvent('click');
+  await expect(window.locator('.file-row').first()).toBeVisible({
+    timeout: 10_000,
+  });
+}
+
+/** Right-click a file in the commit-detail FileList of a specific commit. */
+async function rightClickFileInCommit(
+  window: import('playwright').Page,
+  subject: string,
+  fileName: string,
+) {
+  await selectCommitBySubject(window, subject);
+  const row = window.locator('.file-row', { hasText: fileName });
+  await expect(row.first()).toBeVisible({ timeout: 10_000 });
+  await row.first().click({ button: 'right' });
+  await expect(window.locator('.file-context-menu')).toBeVisible();
+}
+
+async function rightClickFileInWorkingTree(
+  window: import('playwright').Page,
+  fileName: string,
+) {
+  await window.locator('.nav-item', { hasText: 'File Status' }).click();
+  await expect(
+    window.locator('.section-toggle', { hasText: 'Unstaged files' }),
+  ).toBeVisible({ timeout: 10_000 });
+  const row = window.locator('.file-row', { hasText: fileName });
+  await expect(row.first()).toBeVisible({ timeout: 10_000 });
+  await row.first().click({ button: 'right' });
+  await expect(window.locator('.file-context-menu')).toBeVisible();
+}
+
+test.describe('File log dialog', () => {
+  test.beforeEach(async ({ window }) => {
+    await setupFileLogBranch(window);
+  });
+
+  test('Log Selected appears in working-tree context menu', async ({
+    window,
+  }) => {
+    await rightClickFileInWorkingTree(window, 'staged-file.ts');
+    await expect(
+      window.locator('[data-testid="ctx-log-selected"]'),
+    ).toBeVisible();
+  });
+
+  test('Log Selected hidden on untracked file (status ?)', async ({
+    window,
+  }) => {
+    await rightClickFileInWorkingTree(window, 'unstaged-file.ts');
+    await expect(
+      window.locator('[data-testid="ctx-log-selected"]'),
+    ).toHaveCount(0);
+  });
+
+  test('opens dialog with title from file path', async ({ window }) => {
+    await rightClickFileInCommit(
+      window,
+      'docs: add VERSION + NAME',
+      'walkthrough.ts',
+    );
+    await window.locator('[data-testid="ctx-log-selected"]').click();
+    await expect(
+      window.locator('[data-testid="file-log-dialog"]'),
+    ).toBeVisible();
+    await expect(
+      window.locator('[data-testid="file-log-title"]'),
+    ).toContainText('walkthrough.ts');
+  });
+
+  test('list contains commits that touched the file (post-rename)', async ({
+    window,
+  }) => {
+    await rightClickFileInCommit(
+      window,
+      'docs: rename demo → guide',
+      'guide.ts',
+    );
+    await window.locator('[data-testid="ctx-log-selected"]').click();
+    await expect(
+      window.locator('[data-testid="file-log-row"]').first(),
+    ).toBeVisible({ timeout: 5_000 });
+    // Without --follow we only see commits since the rename (D + C),
+    // i.e. >= 2 rows.
+    const count = await window.locator('[data-testid="file-log-row"]').count();
+    expect(count).toBeGreaterThanOrEqual(2);
+  });
+
+  test('default selection picks newest row + diff renders', async ({
+    window,
+  }) => {
+    await rightClickFileInCommit(
+      window,
+      'docs: rename demo → guide',
+      'guide.ts',
+    );
+    await window.locator('[data-testid="ctx-log-selected"]').click();
+    const firstRow = window.locator('[data-testid="file-log-row"]').first();
+    await expect(firstRow).toHaveClass(/selected/, { timeout: 5_000 });
+    await expect(
+      window.locator('[data-testid="file-log-diff"] .diff-line').first(),
+    ).toBeVisible({ timeout: 5_000 });
+  });
+
+  test('clicking a row updates the diff', async ({ window }) => {
+    await rightClickFileInCommit(
+      window,
+      'docs: rename demo → guide',
+      'guide.ts',
+    );
+    await window.locator('[data-testid="ctx-log-selected"]').click();
+    const rows = window.locator('[data-testid="file-log-row"]');
+    await expect(rows.first()).toBeVisible({ timeout: 5_000 });
+    if ((await rows.count()) >= 2) {
+      const before = await window
+        .locator('[data-testid="file-log-diff"]')
+        .innerText();
+      await rows.nth(1).click();
+      await expect
+        .poll(
+          async () =>
+            window.locator('[data-testid="file-log-diff"]').innerText(),
+          { timeout: 5_000 },
+        )
+        .not.toBe(before);
+    }
+  });
+
+  test('Follow renamed files toggle includes pre-rename commits', async ({
+    window,
+  }) => {
+    await rightClickFileInCommit(
+      window,
+      'docs: rename demo → guide',
+      'guide.ts',
+    );
+    await window.locator('[data-testid="ctx-log-selected"]').click();
+    await expect(
+      window.locator('[data-testid="file-log-row"]').first(),
+    ).toBeVisible({ timeout: 5_000 });
+    const before = await window.locator('[data-testid="file-log-row"]').count();
+    await window.locator('[data-testid="file-log-follow-renames"]').click();
+    await expect
+      .poll(
+        async () => window.locator('[data-testid="file-log-row"]').count(),
+        { timeout: 5_000 },
+      )
+      .toBeGreaterThan(before);
+  });
+
+  test('Esc closes the dialog', async ({ window }) => {
+    await rightClickFileInCommit(
+      window,
+      'docs: rename demo → guide',
+      'guide.ts',
+    );
+    await window.locator('[data-testid="ctx-log-selected"]').click();
+    await expect(
+      window.locator('[data-testid="file-log-dialog"]'),
+    ).toBeVisible();
+    await window.keyboard.press('Escape');
+    await expect(window.locator('[data-testid="file-log-dialog"]')).toBeHidden({
+      timeout: 3_000,
+    });
+  });
+
+  test('Close button dismisses the dialog', async ({ window }) => {
+    await rightClickFileInCommit(
+      window,
+      'docs: rename demo → guide',
+      'guide.ts',
+    );
+    await window.locator('[data-testid="ctx-log-selected"]').click();
+    await expect(
+      window.locator('[data-testid="file-log-dialog"]'),
+    ).toBeVisible();
+    await window.locator('[data-testid="file-log-dialog"] .btn-cancel').click();
+    await expect(window.locator('[data-testid="file-log-dialog"]')).toBeHidden({
+      timeout: 3_000,
+    });
+  });
+
+  test('CommitInfoPanel reflects the selected row', async ({ window }) => {
+    await rightClickFileInCommit(
+      window,
+      'docs: rename demo → guide',
+      'guide.ts',
+    );
+    await window.locator('[data-testid="ctx-log-selected"]').click();
+    await expect(
+      window.locator('[data-testid="file-log-row"]').first(),
+    ).toBeVisible({ timeout: 5_000 });
+    // CommitInfoPanel renders a "Commit:" label inside the dialog.
+    await expect(
+      window.locator('[data-testid="file-log-dialog"] .meta-label', {
+        hasText: 'Commit:',
+      }),
+    ).toBeVisible();
+  });
+});
+
+test.describe('Annotate dialog', () => {
+  test.beforeEach(async ({ window }) => {
+    await setupFileLogBranch(window);
+  });
+
+  test('Annotate Selected appears in commit-detail context menu', async ({
+    window,
+  }) => {
+    await rightClickFileInCommit(
+      window,
+      'docs: rename demo → guide',
+      'guide.ts',
+    );
+    await expect(
+      window.locator('[data-testid="ctx-annotate-selected"]'),
+    ).toBeVisible();
+  });
+
+  test('Annotate Selected hidden on untracked file', async ({ window }) => {
+    await rightClickFileInWorkingTree(window, 'unstaged-file.ts');
+    await expect(
+      window.locator('[data-testid="ctx-annotate-selected"]'),
+    ).toHaveCount(0);
+  });
+
+  test('opens dialog with title from file path', async ({ window }) => {
+    await rightClickFileInCommit(
+      window,
+      'docs: rename demo → guide',
+      'guide.ts',
+    );
+    await window.locator('[data-testid="ctx-annotate-selected"]').click();
+    await expect(window.locator('[data-testid="annotate-dialog"]')).toBeVisible(
+      { timeout: 5_000 },
+    );
+    await expect(
+      window.locator('[data-testid="annotate-title"]'),
+    ).toContainText('guide.ts');
+  });
+
+  test('rows render with author + changeset cells', async ({ window }) => {
+    await rightClickFileInCommit(
+      window,
+      'docs: rename demo → guide',
+      'guide.ts',
+    );
+    await window.locator('[data-testid="ctx-annotate-selected"]').click();
+    const firstRow = window
+      .locator('[data-testid="annotate-dialog"] [data-testid="code-line"]')
+      .first();
+    await expect(firstRow).toBeVisible({ timeout: 10_000 });
+    // 7-char short hash on the changeset button
+    const shortHash = await firstRow
+      .locator('[data-testid="code-line-changeset"]')
+      .innerText();
+    expect(shortHash).toMatch(/^[0-9a-f]{7}$/);
+  });
+
+  test('multi-author file shows distinct authors across rows', async ({
+    window,
+  }) => {
+    await rightClickFileInCommit(
+      window,
+      'docs: rename demo → guide',
+      'guide.ts',
+    );
+    await window.locator('[data-testid="ctx-annotate-selected"]').click();
+    await expect(
+      window
+        .locator('[data-testid="annotate-dialog"] [data-testid="code-line"]')
+        .first(),
+    ).toBeVisible({ timeout: 10_000 });
+    const authors = await window
+      .locator(
+        '[data-testid="annotate-dialog"] [data-testid="code-line"] .col-author',
+      )
+      .allInnerTexts();
+    const unique = new Set(authors.map((a) => a.trim()));
+    expect(unique.size).toBeGreaterThanOrEqual(2);
+  });
+
+  test('content shows tokenised spans for syntax-highlighted file', async ({
+    window,
+  }) => {
+    await rightClickFileInCommit(
+      window,
+      'docs: rename demo → guide',
+      'guide.ts',
+    );
+    await window.locator('[data-testid="ctx-annotate-selected"]').click();
+    // Wait for highlight to land — Shiki's first-load can take a beat.
+    await expect
+      .poll(
+        async () =>
+          window
+            .locator(
+              '[data-testid="annotate-dialog"] [data-testid="code-line"] .col-content span[style*="color:"]',
+            )
+            .count(),
+        { timeout: 15_000 },
+      )
+      .toBeGreaterThan(0);
+  });
+
+  test('plaintext file falls back to non-tokenised spans', async ({
+    window,
+  }) => {
+    await rightClickFileInCommit(window, 'docs: add big.txt', 'big.txt');
+    await window.locator('[data-testid="ctx-annotate-selected"]').click();
+    await expect(
+      window
+        .locator('[data-testid="annotate-dialog"] [data-testid="code-line"]')
+        .first(),
+    ).toBeVisible({ timeout: 10_000 });
+    // No `style="color:..."` spans anywhere in the body.
+    const colored = await window
+      .locator(
+        '[data-testid="annotate-dialog"] .col-content span[style*="color:"]',
+      )
+      .count();
+    expect(colored).toBe(0);
+  });
+
+  test('Esc closes the dialog', async ({ window }) => {
+    await rightClickFileInCommit(
+      window,
+      'docs: rename demo → guide',
+      'guide.ts',
+    );
+    await window.locator('[data-testid="ctx-annotate-selected"]').click();
+    await expect(window.locator('[data-testid="annotate-dialog"]')).toBeVisible(
+      { timeout: 5_000 },
+    );
+    await window.keyboard.press('Escape');
+    await expect(window.locator('[data-testid="annotate-dialog"]')).toBeHidden({
+      timeout: 3_000,
+    });
+  });
+
+  test('Close button dismisses the dialog', async ({ window }) => {
+    await rightClickFileInCommit(
+      window,
+      'docs: rename demo → guide',
+      'guide.ts',
+    );
+    await window.locator('[data-testid="ctx-annotate-selected"]').click();
+    await expect(window.locator('[data-testid="annotate-dialog"]')).toBeVisible(
+      { timeout: 5_000 },
+    );
+    await window.locator('[data-testid="annotate-dialog"] .btn-cancel').click();
+    await expect(window.locator('[data-testid="annotate-dialog"]')).toBeHidden({
+      timeout: 3_000,
+    });
+  });
+
+  test('large file is virtualised (DOM rows ≪ source lines)', async ({
+    window,
+  }) => {
+    await rightClickFileInCommit(window, 'docs: add big.txt', 'big.txt');
+    await window.locator('[data-testid="ctx-annotate-selected"]').click();
+    await expect(
+      window
+        .locator('[data-testid="annotate-dialog"] [data-testid="code-line"]')
+        .first(),
+    ).toBeVisible({ timeout: 10_000 });
+    // big.txt has 2000 lines; virtualisation should keep rendered rows
+    // well under that.
+    const rendered = await window
+      .locator('[data-testid="annotate-dialog"] [data-testid="code-line"]')
+      .count();
+    expect(rendered).toBeLessThan(500);
+  });
+
+  test('clicking changeset cell opens FileLogDialog with the same hash', async ({
+    window,
+  }) => {
+    await rightClickFileInCommit(
+      window,
+      'docs: rename demo → guide',
+      'guide.ts',
+    );
+    await window.locator('[data-testid="ctx-annotate-selected"]').click();
+    const firstChangeset = window
+      .locator(
+        '[data-testid="annotate-dialog"] [data-testid="code-line-changeset"]',
+      )
+      .first();
+    await expect(firstChangeset).toBeVisible({ timeout: 10_000 });
+    const expectedHash = await firstChangeset.getAttribute('data-hash');
+    await firstChangeset.click();
+    // Annotate closes, FileLog opens.
+    await expect(window.locator('[data-testid="annotate-dialog"]')).toBeHidden({
+      timeout: 5_000,
+    });
+    await expect(window.locator('[data-testid="file-log-dialog"]')).toBeVisible(
+      { timeout: 5_000 },
+    );
+    // Selected row's hash matches the one we clicked.
+    const selectedHash = await window
+      .locator('[data-testid="file-log-row"].selected')
+      .getAttribute('data-hash');
+    expect(selectedHash).toBe(expectedHash);
   });
 });
