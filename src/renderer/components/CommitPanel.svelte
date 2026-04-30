@@ -1,6 +1,9 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
+  import { Sparkles, X, Loader2 } from '@lucide/svelte';
   import { settingsStore } from '../settings-store.svelte';
+  import { aiStore } from '../ai-store.svelte';
+  import type { AITokenEvent } from '../../shared/ipc';
 
   type Props = {
     currentBranch?: string | null;
@@ -34,6 +37,35 @@
   let authorName = $state('');
   let authorEmail = $state('');
 
+  let aiRequestId = $state<string | null>(null);
+  let aiThinking = $state(false);
+  let aiOff: (() => void) | undefined;
+  let aiHolderId: string | null = null;
+
+  // Hold the model warm while the user is in the commit view. The
+  // matching release on unmount lets the main process unload it (unless
+  // `keepModelLoaded` is on, in which case it's a no-op).
+  $effect(() => {
+    if (!aiStore.modelReady) return;
+    let cancelled = false;
+    void (async () => {
+      const r = await window.electronAPI.ai.holdModel();
+      if (cancelled) {
+        if (r.holderId) void window.electronAPI.ai.releaseModel(r.holderId);
+        return;
+      }
+      aiHolderId = r.holderId || null;
+    })();
+    return () => {
+      cancelled = true;
+      if (aiHolderId) {
+        const id = aiHolderId;
+        aiHolderId = null;
+        void window.electronAPI.ai.releaseModel(id);
+      }
+    };
+  });
+
   onMount(async () => {
     const stored = settingsStore.settings.commit;
     if (stored.authorName) {
@@ -61,6 +93,155 @@
     onCommit?.(message, amend, pushAfterCommit, noVerify);
     message = '';
   }
+
+  async function generateWithAI() {
+    if (aiRequestId) return;
+    if (
+      message.trim() &&
+      !confirm('Replace the current draft with an AI-generated message?')
+    ) {
+      return;
+    }
+    message = '';
+
+    // Pre-allocate the requestId so the listener's filter is correct
+    // before we even fire the IPC call (otherwise early done/error events
+    // race the invoke reply and get filtered out → UI hang).
+    const myRequestId = crypto.randomUUID();
+    aiRequestId = myRequestId;
+
+    aiThinking = true;
+    aiOff = window.electronAPI.ai.onToken((event: AITokenEvent) => {
+      if (event.requestId !== myRequestId) return;
+      if (event.type === 'token') {
+        if (aiThinking) aiThinking = false;
+        message += event.delta;
+      } else {
+        aiRequestId = null;
+        aiThinking = false;
+        aiOff?.();
+        aiOff = undefined;
+        if (event.type === 'done' && event.reason === 'error') {
+          console.error('[ai] commit-message error:', event.error);
+          if (event.error) alert(`AI generation failed: ${event.error}`);
+        }
+      }
+    });
+
+    try {
+      const status = await window.electronAPI.git.getWorkingStatus();
+      if (status.staged.length === 0) {
+        aiOff?.();
+        aiOff = undefined;
+        aiRequestId = null;
+        aiThinking = false;
+        alert(
+          'No staged files. Stage some changes first, then click Generate again.',
+        );
+        return;
+      }
+      const diffs = await Promise.all(
+        status.staged.map(async (f) => ({
+          path: f.path,
+          diff: await window.electronAPI.git.getWorkingDiff(f.path, true),
+        })),
+      );
+      const truncated = await truncateDiffsRenderer(diffs);
+
+      const recent = await window.electronAPI.git.getCommits({ maxCount: 5 });
+      const subjects = recent
+        .map((c) => `- ${c.message.split('\n')[0].slice(0, 100)}`)
+        .join('\n');
+
+      const system =
+        "You write concise, conventional-commit-style messages. Format: '<type>(<scope>): <subject>' followed by an optional bullet body. Types: feat, fix, chore, refactor, docs, test, perf. Subject ≤ 72 chars, imperative mood, no period at end. Body: optional bullets if multiple distinct changes. Respond with the commit message only — no explanation, no markdown fences.";
+      const prompt = [
+        `Branch: ${currentBranch ?? 'unknown'}`,
+        '',
+        'Recent commit subjects (style reference):',
+        subjects || '(no recent commits)',
+        '',
+        'Staged diff:',
+        truncated,
+        '',
+        'Write the commit message.',
+      ].join('\n');
+
+      const r = await window.electronAPI.ai.inferStream({
+        requestId: myRequestId,
+        kind: 'commit-message',
+        system,
+        prompt,
+        maxTokens: 256,
+        temperature: 0.3,
+      });
+      if (r.error) {
+        aiOff?.();
+        aiOff = undefined;
+        aiRequestId = null;
+        aiThinking = false;
+        alert(`AI generation failed: ${r.error}`);
+        return;
+      }
+    } catch (e) {
+      console.error('[ai] commit-message failed:', e);
+      aiRequestId = null;
+      aiThinking = false;
+      aiOff?.();
+      aiOff = undefined;
+    }
+  }
+
+  /**
+   * Renderer-side trivial truncation: cap each file's serialised diff to
+   * 4 KB and the total to 12 KB, so we don't ship multi-megabyte diffs to
+   * the model. Mirrors the budget in `src/main/diff-truncate.ts` but works
+   * directly off `FileDiff` shapes without an extra IPC hop.
+   */
+  async function truncateDiffsRenderer(
+    files: Array<{ path: string; diff: import('../types').FileDiff }>,
+  ): Promise<string> {
+    const MAX_FILE = 4 * 1024;
+    const MAX_TOTAL = 12 * 1024;
+    const parts: string[] = [];
+    let total = 0;
+    for (const f of files) {
+      let body: string;
+      if (f.diff.binary) {
+        body = `<binary>: ${f.path}`;
+      } else {
+        const lines: string[] = [`diff --git a/${f.path} b/${f.path}`];
+        for (const h of f.diff.hunks) {
+          lines.push(h.header);
+          for (const l of h.lines) {
+            const prefix =
+              l.type === 'added' ? '+' : l.type === 'removed' ? '-' : ' ';
+            lines.push(`${prefix}${l.content}`);
+          }
+        }
+        body = lines.join('\n');
+        if (body.length > MAX_FILE)
+          body = body.slice(0, MAX_FILE) + '\n... <truncated>';
+      }
+      if (total + body.length > MAX_TOTAL && parts.length > 0) {
+        parts.push(`<${f.path}>: omitted (total budget reached)`);
+        break;
+      }
+      parts.push(body);
+      total += body.length + 2;
+    }
+    return parts.join('\n\n');
+  }
+
+  async function cancelAI() {
+    if (!aiRequestId) return;
+    await window.electronAPI.ai.cancelInfer(aiRequestId);
+  }
+
+  onDestroy(() => {
+    if (aiRequestId) void window.electronAPI.ai.cancelInfer(aiRequestId);
+    aiOff?.();
+  });
 </script>
 
 <div class="commit-panel">
@@ -76,12 +257,42 @@
     {/if}
   </div>
 
-  <textarea
-    class="commit-message"
-    placeholder="Commit message..."
-    bind:value={message}
-    rows={4}
-  ></textarea>
+  <div class="textarea-wrap">
+    <textarea
+      class="commit-message"
+      placeholder="Commit message..."
+      bind:value={message}
+      rows={4}
+    ></textarea>
+    {#if aiStore.modelReady}
+      {#if aiRequestId}
+        <button
+          type="button"
+          class="ai-btn ai-btn-cancel"
+          onclick={cancelAI}
+          title="Cancel AI generation"
+          data-testid="commit-ai-cancel"
+        >
+          {#if aiThinking}
+            <span class="ai-spin"><Loader2 size={12} /></span>
+            Thinking…
+          {:else}
+            <X size={12} /> Stop
+          {/if}
+        </button>
+      {:else}
+        <button
+          type="button"
+          class="ai-btn"
+          onclick={generateWithAI}
+          title="Generate with AI"
+          data-testid="commit-ai-generate"
+        >
+          <Sparkles size={12} /> Generate
+        </button>
+      {/if}
+    {/if}
+  </div>
 
   <div class="actions-row">
     <label class="option">
@@ -120,7 +331,7 @@
       <button class="btn-cancel" onclick={onCancel}>Cancel</button>
       <button
         class="btn-commit"
-        disabled={!message.trim()}
+        disabled={!message.trim() || !!aiRequestId}
         onclick={handleCommit}
       >
         Commit
@@ -165,6 +376,10 @@
     color: var(--color-text-secondary);
   }
 
+  .textarea-wrap {
+    position: relative;
+  }
+
   .commit-message {
     width: 100%;
     box-sizing: border-box;
@@ -181,6 +396,46 @@
 
   .commit-message:focus {
     border-color: var(--color-text-accent);
+  }
+
+  .ai-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-text-accent);
+    color: var(--color-text-accent);
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+
+  .ai-btn:hover {
+    background: var(--color-bg-hover);
+  }
+
+  .ai-btn-cancel {
+    border-color: var(--color-border);
+    color: var(--color-text-primary);
+  }
+
+  .ai-spin {
+    display: inline-flex;
+    align-items: center;
+    animation: ai-spin 1s linear infinite;
+  }
+
+  @keyframes ai-spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .actions-row {

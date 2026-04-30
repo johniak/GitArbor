@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     Smartphone,
+    Sparkles,
     UserCircle,
     FileText,
     SlidersHorizontal,
@@ -12,6 +13,7 @@
 
   export type Tab =
     | 'general'
+    | 'ai'
     | 'accounts'
     | 'commit'
     | 'diff'
@@ -35,6 +37,7 @@
     enabled: boolean;
   }> = [
     { id: 'general', label: 'General', icon: Smartphone, enabled: true },
+    { id: 'ai', label: 'AI', icon: Sparkles, enabled: true },
     { id: 'accounts', label: 'Accounts', icon: UserCircle, enabled: false },
     { id: 'commit', label: 'Commit', icon: FileText, enabled: false },
     { id: 'diff', label: 'Diff', icon: SlidersHorizontal, enabled: false },

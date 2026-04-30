@@ -30,6 +30,28 @@ export type { RepoSettings } from './repo-settings-types';
 export { DEFAULT_REPO_SETTINGS } from './repo-settings-types';
 export type { AppSettings } from './app-settings-types';
 export { DEFAULT_APP_SETTINGS } from './app-settings-types';
+export type {
+  AIAPI,
+  AISettings,
+  AIInferRequest,
+  AIInferKind,
+  AITokenEvent,
+  AIStateEvent,
+  AIDownloadOpts,
+  CuratedModel,
+  AIModelFamily,
+  DownloadedModelMeta,
+  HardwareInfo,
+  GpuKind,
+  ModelEntry,
+  ModelStatus,
+  DownloadProgress,
+} from './ai-types';
+export {
+  CURATED_MODELS,
+  DEFAULT_AI_SETTINGS,
+  DEFAULT_MODEL_ID,
+} from './ai-types';
 
 export interface GetCommitsRequest {
   maxCount?: number;
@@ -137,6 +159,17 @@ export const IPC = {
   APP_SETTINGS_CHANGED: 'app-settings:changed',
   THEME_GET_RESOLVED: 'theme:get-resolved',
   THEME_RESOLVED: 'theme:resolved',
+  AI_GET_HARDWARE_INFO: 'ai:get-hardware-info',
+  AI_LIST_MODELS: 'ai:list-models',
+  AI_DOWNLOAD_MODEL: 'ai:download-model',
+  AI_CANCEL_DOWNLOAD: 'ai:cancel-download',
+  AI_REMOVE_MODEL: 'ai:remove-model',
+  AI_INFER_STREAM: 'ai:infer-stream',
+  AI_CANCEL_INFER: 'ai:cancel-infer',
+  AI_HOLD_MODEL: 'ai:hold-model',
+  AI_RELEASE_MODEL: 'ai:release-model',
+  AI_INFER_TOKEN: 'ai:infer-token',
+  AI_STATE_CHANGED: 'ai:state-changed',
 } as const;
 
 /** Request/response types per IPC channel */
@@ -321,6 +354,7 @@ export interface ElectronAPI {
   settings: SettingsAPI;
   appSettings: AppSettingsAPI;
   theme: ThemeAPI;
+  ai: import('./ai-types').AIAPI;
   platform: string;
 }
 

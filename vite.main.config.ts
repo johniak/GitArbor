@@ -6,7 +6,7 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      external: ['sql.js'],
+      external: ['sql.js', 'node-llama-cpp', /^@node-llama-cpp\//],
     },
   },
 });

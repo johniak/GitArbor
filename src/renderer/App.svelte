@@ -50,6 +50,7 @@
   import { SvelteSet } from 'svelte/reactivity';
   import { settingsStore } from './settings-store.svelte';
   import { themeStore } from './theme-store.svelte';
+  import { aiStore } from './ai-store.svelte';
   import { STORAGE_KEY, loadWidths } from './column-widths';
 
   const PAGE_SIZE = 100;
@@ -466,6 +467,7 @@
 
   onMount(async () => {
     void themeStore.hydrate();
+    void aiStore.hydrate();
     await hydrateSettings();
     currentRepoPath = await window.electronAPI.repo.getCurrentPath();
     await loadAllData();

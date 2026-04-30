@@ -68,7 +68,7 @@ export function updateAppSettings(
   const current = loadAppSettings();
   const merged: AppSettings = {
     ...deepMerge(current, patch),
-    schemaVersion: 2,
+    schemaVersion: 3,
   };
   cache = merged;
   if (pendingTimer) clearTimeout(pendingTimer);
@@ -80,4 +80,13 @@ export function flushAppSettings(): void {
   if (!pendingTimer) return;
   clearTimeout(pendingTimer);
   writeToDisk();
+}
+
+/** Test-only: forget cached settings + the configured directory so a fresh
+ *  `configureAppSettings` + `loadAppSettings` cycle can run on a clean slate. */
+export function _resetAppSettingsState(): void {
+  if (pendingTimer) clearTimeout(pendingTimer);
+  pendingTimer = null;
+  cache = null;
+  userDataDir = null;
 }

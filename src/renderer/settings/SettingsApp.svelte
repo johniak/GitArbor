@@ -3,6 +3,7 @@
   import type { AppSettings } from '../../shared/ipc';
   import SettingsTabs, { type Tab } from './SettingsTabs.svelte';
   import GeneralPage from './GeneralPage.svelte';
+  import AIPage from './AIPage.svelte';
   import { themeStore } from '../theme-store.svelte';
 
   let currentTab = $state<Tab>('general');
@@ -28,6 +29,16 @@
     }
     await window.electronAPI.appSettings.update({ general: patch });
   }
+
+  async function handleAIChange(patch: Partial<AppSettings['ai']>) {
+    if (settings) {
+      settings = {
+        ...settings,
+        ai: { ...settings.ai, ...patch },
+      };
+    }
+    await window.electronAPI.appSettings.update({ ai: patch });
+  }
 </script>
 
 <div class="settings">
@@ -37,6 +48,8 @@
     {#if settings}
       {#if currentTab === 'general'}
         <GeneralPage {settings} onChange={handleGeneralChange} />
+      {:else if currentTab === 'ai'}
+        <AIPage {settings} onChange={handleAIChange} />
       {:else}
         <div class="placeholder">Coming soon…</div>
       {/if}

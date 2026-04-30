@@ -7,6 +7,10 @@ import type {
   RepoSettings,
   AppSettings,
   SearchCommitsRequest,
+  AIDownloadOpts,
+  AIInferRequest,
+  AITokenEvent,
+  AIStateEvent,
 } from '../shared/ipc';
 
 const api: ElectronAPI = {
@@ -217,6 +221,32 @@ const api: ElectronAPI = {
       const listener = (_: unknown, theme: 'light' | 'dark') => cb(theme);
       ipcRenderer.on(IPC.THEME_RESOLVED, listener);
       return () => ipcRenderer.off(IPC.THEME_RESOLVED, listener);
+    },
+  },
+  ai: {
+    getHardwareInfo: () => ipcRenderer.invoke(IPC.AI_GET_HARDWARE_INFO),
+    listModels: () => ipcRenderer.invoke(IPC.AI_LIST_MODELS),
+    downloadModel: (opts: AIDownloadOpts) =>
+      ipcRenderer.invoke(IPC.AI_DOWNLOAD_MODEL, opts),
+    cancelDownload: (id: string) =>
+      ipcRenderer.invoke(IPC.AI_CANCEL_DOWNLOAD, id),
+    removeModel: (id: string) => ipcRenderer.invoke(IPC.AI_REMOVE_MODEL, id),
+    inferStream: (req: AIInferRequest) =>
+      ipcRenderer.invoke(IPC.AI_INFER_STREAM, req),
+    cancelInfer: (requestId: string) =>
+      ipcRenderer.invoke(IPC.AI_CANCEL_INFER, requestId),
+    holdModel: () => ipcRenderer.invoke(IPC.AI_HOLD_MODEL),
+    releaseModel: (holderId: string) =>
+      ipcRenderer.invoke(IPC.AI_RELEASE_MODEL, holderId),
+    onToken: (cb: (event: AITokenEvent) => void) => {
+      const listener = (_: unknown, event: AITokenEvent) => cb(event);
+      ipcRenderer.on(IPC.AI_INFER_TOKEN, listener);
+      return () => ipcRenderer.off(IPC.AI_INFER_TOKEN, listener);
+    },
+    onState: (cb: (event: AIStateEvent) => void) => {
+      const listener = (_: unknown, event: AIStateEvent) => cb(event);
+      ipcRenderer.on(IPC.AI_STATE_CHANGED, listener);
+      return () => ipcRenderer.off(IPC.AI_STATE_CHANGED, listener);
     },
   },
   platform: process.platform,

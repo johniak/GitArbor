@@ -13,7 +13,11 @@ import fs from 'node:fs';
 const isE2E = process.env.E2E_TEST === '1';
 
 // JS-only modules marked as external in Vite that need copying to packaged app
-const EXTERNAL_MODULES = ['sql.js'];
+const EXTERNAL_MODULES = ['sql.js', 'node-llama-cpp'];
+
+// `@node-llama-cpp/*` platform-binary subpackages get copied wholesale —
+// node-llama-cpp dlopen's `.node` binaries from these packages at runtime.
+const NODE_LLAMA_CPP_BINARY_SCOPE = '@node-llama-cpp';
 
 const plugins: ForgeConfig['plugins'] = [
   new AutoUnpackNativesPlugin({}),
@@ -73,6 +77,14 @@ const config: ForgeConfig = {
         if (fs.existsSync(src)) {
           fs.cpSync(src, dest, { recursive: true });
         }
+      }
+
+      // Copy any installed `@node-llama-cpp/<platform>-<arch>-<backend>`
+      // packages — these contain the prebuilt llama.cpp `.node` binaries.
+      const scopeSrc = path.join(srcModules, NODE_LLAMA_CPP_BINARY_SCOPE);
+      const scopeDest = path.join(destModules, NODE_LLAMA_CPP_BINARY_SCOPE);
+      if (fs.existsSync(scopeSrc)) {
+        fs.cpSync(scopeSrc, scopeDest, { recursive: true });
       }
 
       // Copy app icon (overwrite default electron.icns on macOS)

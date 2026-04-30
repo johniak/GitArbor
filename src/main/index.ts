@@ -31,8 +31,15 @@ import {
   onResolvedThemeChange,
 } from './theme';
 import { IPC } from '../shared/ipc';
-import type { DeepPartial, RepoSettings, AppSettings } from '../shared/ipc';
+import type {
+  DeepPartial,
+  RepoSettings,
+  AppSettings,
+  AIDownloadOpts,
+  AIInferRequest,
+} from '../shared/ipc';
 import { DEFAULT_REPO_SETTINGS } from '../shared/ipc';
+import * as aiService from './ai-service';
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
@@ -817,9 +824,33 @@ ipcMain.handle(IPC.WINDOW_SHOW_SETTINGS, () => {
   showSettingsWindow();
 });
 
+// AI IPC handlers — see src/main/ai-service.ts for the implementation.
+ipcMain.handle(IPC.AI_GET_HARDWARE_INFO, () => aiService.getHardwareInfo());
+ipcMain.handle(IPC.AI_LIST_MODELS, () => aiService.listModels());
+ipcMain.handle(IPC.AI_DOWNLOAD_MODEL, (_event, opts: AIDownloadOpts) =>
+  aiService.downloadModel(opts),
+);
+ipcMain.handle(IPC.AI_CANCEL_DOWNLOAD, (_event, id: string) =>
+  aiService.cancelDownload(id),
+);
+ipcMain.handle(IPC.AI_REMOVE_MODEL, (_event, id: string) =>
+  aiService.removeModel(id),
+);
+ipcMain.handle(IPC.AI_INFER_STREAM, (event, req: AIInferRequest) =>
+  aiService.inferStream(req, event.sender),
+);
+ipcMain.handle(IPC.AI_CANCEL_INFER, (_event, requestId: string) =>
+  aiService.cancelInfer(requestId),
+);
+ipcMain.handle(IPC.AI_HOLD_MODEL, () => aiService.holdModel());
+ipcMain.handle(IPC.AI_RELEASE_MODEL, (_event, holderId: string) =>
+  aiService.releaseModel(holderId),
+);
+
 app.on('before-quit', () => {
   flushRepoSettings();
   flushAppSettings();
+  void aiService.shutdown();
 });
 
 app.on('ready', async () => {
@@ -828,6 +859,7 @@ app.on('ready', async () => {
     configureRepoSettings(userData);
     configureAppSettings(userData);
     configureInteractiveRebase(path.join(userData, 'interactive-rebase'));
+    await aiService.init(userData);
 
     // Apply the persisted appearance preference + listen for OS theme
     // changes (and any subsequent applyAppearance calls). Each event
