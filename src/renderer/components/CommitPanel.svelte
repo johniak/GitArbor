@@ -46,7 +46,7 @@
   // matching release on unmount lets the main process unload it (unless
   // `keepModelLoaded` is on, in which case it's a no-op).
   $effect(() => {
-    if (!aiStore.modelReady) return;
+    if (!aiStore.sourceReady) return;
     let cancelled = false;
     void (async () => {
       const r = await window.electronAPI.ai.holdModel();
@@ -264,7 +264,7 @@
       bind:value={message}
       rows={4}
     ></textarea>
-    {#if aiStore.modelReady}
+    {#if aiStore.sourceReady}
       {#if aiRequestId}
         <button
           type="button"

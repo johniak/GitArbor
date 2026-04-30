@@ -33,6 +33,9 @@ export { DEFAULT_APP_SETTINGS } from './app-settings-types';
 export type {
   AIAPI,
   AISettings,
+  AISource,
+  CodingAgentTool,
+  SourceReadyInfo,
   AIInferRequest,
   AIInferKind,
   AITokenEvent,
@@ -168,6 +171,7 @@ export const IPC = {
   AI_CANCEL_INFER: 'ai:cancel-infer',
   AI_HOLD_MODEL: 'ai:hold-model',
   AI_RELEASE_MODEL: 'ai:release-model',
+  AI_GET_SOURCE_READY: 'ai:get-source-ready',
   AI_INFER_TOKEN: 'ai:infer-token',
   AI_STATE_CHANGED: 'ai:state-changed',
 } as const;

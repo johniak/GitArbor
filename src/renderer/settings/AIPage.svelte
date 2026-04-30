@@ -1,11 +1,22 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { Cpu, Trash2, RotateCcw, X, Sparkles, Loader2 } from '@lucide/svelte';
+  import {
+    Cpu,
+    Trash2,
+    RotateCcw,
+    X,
+    Sparkles,
+    Loader2,
+    Check,
+    AlertCircle,
+    RefreshCw,
+  } from '@lucide/svelte';
   import type {
     AppSettings,
     HardwareInfo,
     ModelEntry,
     AIStateEvent,
+    SourceReadyInfo,
   } from '../../shared/ipc';
   import { CURATED_MODELS } from '../../shared/ipc';
 
@@ -17,15 +28,22 @@
   let { settings, onChange }: Props = $props();
 
   let enabled = $state(settings.ai.enabled);
+  let source = $state(settings.ai.source);
   let selectedModelId = $state(settings.ai.selectedModelId);
   let customGgufUrl = $state(settings.ai.customGgufUrl);
   let customLabel = $state('');
   let keepModelLoaded = $state(settings.ai.keepModelLoaded);
+  let codingAgentTool = $state(settings.ai.codingAgentTool);
+  let codingAgentBinaryPath = $state(settings.ai.codingAgentBinaryPath);
+  let openAIBaseUrl = $state(settings.ai.openAIBaseUrl);
+  let openAIModel = $state(settings.ai.openAIModel);
+  let openAIApiKey = $state(settings.ai.openAIApiKey);
 
   let hardware = $state<HardwareInfo | null>(null);
   let hardwareLoading = $state(true);
   let hardwareError = $state<string | null>(null);
   let models = $state<ModelEntry[]>([]);
+  let ready = $state<SourceReadyInfo | null>(null);
   let off: (() => void) | undefined;
 
   let selectedEntry = $derived(
@@ -72,11 +90,17 @@
     }
   }
 
-  onMount(() => {
-    // Fire both probes in parallel so the model list paints as soon as
-    // it's ready, without waiting for the (potentially slow first-time)
-    // native llama.cpp binary load to settle the hardware row.
+  async function refreshReady() {
+    try {
+      ready = await window.electronAPI.ai.getSourceReady();
+    } catch (e) {
+      console.error('[ai-page] getSourceReady failed:', e);
+    }
+  }
+
+  onMount(async () => {
     void refreshModels();
+    void refreshReady();
     void (async () => {
       hardwareLoading = true;
       hardwareError = null;
@@ -106,6 +130,7 @@
         );
       } else {
         void refreshModels();
+        void refreshReady();
       }
     });
   });
@@ -114,14 +139,44 @@
 
   function handleEnableToggle() {
     onChange({ enabled });
+    void refreshReady();
+  }
+
+  function handleSourceChange() {
+    onChange({ source });
+    void refreshReady();
   }
 
   function handleModelChange() {
     onChange({ selectedModelId });
+    void refreshReady();
   }
 
   function handleKeepLoadedToggle() {
     onChange({ keepModelLoaded });
+  }
+
+  function handleCodingAgentToolChange() {
+    onChange({ codingAgentTool });
+    void refreshReady();
+  }
+
+  function handleCodingAgentBinaryPathChange() {
+    onChange({ codingAgentBinaryPath: codingAgentBinaryPath.trim() });
+    void refreshReady();
+  }
+
+  function handleOpenAIChange(
+    field: 'openAIBaseUrl' | 'openAIModel' | 'openAIApiKey',
+  ) {
+    const patch =
+      field === 'openAIBaseUrl'
+        ? { openAIBaseUrl: openAIBaseUrl.trim() }
+        : field === 'openAIModel'
+          ? { openAIModel: openAIModel.trim() }
+          : { openAIApiKey: openAIApiKey.trim() };
+    onChange(patch);
+    void refreshReady();
   }
 
   async function startCuratedDownload(id: string) {
@@ -182,6 +237,10 @@
         !CURATED_MODELS.find((c) => c.id === m.id),
     ),
   );
+
+  // Show readiness only when AI is enabled — otherwise the "AI disabled"
+  // reason is noisy and obvious.
+  let showReady = $derived(enabled && ready !== null);
 </script>
 
 <div class="page">
@@ -192,189 +251,330 @@
       onchange={handleEnableToggle}
       data-testid="settings-ai-enabled"
     />
-    <span>
-      Enable AI features (local LLM for branch names + commit messages)
-    </span>
+    <span> Enable AI features (branch names + commit messages) </span>
   </label>
 
-  <fieldset class="group">
-    <legend>Hardware</legend>
-    <div class="hardware">
-      {#if hardwareLoading}
-        <span class="spinner" aria-label="Detecting hardware">
-          <Loader2 size={16} />
-        </span>
-        <span class="hardware-loading">Detecting GPU support…</span>
-      {:else if hardwareError}
-        <Cpu size={16} />
-        <span class="hardware-error"
-          >Detection failed — falling back to CPU. {hardwareError}</span
-        >
-      {:else if hardware}
-        <Cpu size={16} />
-        <span>{gpuLabel(hardware)}</span>
-      {/if}
+  <fieldset class="group" disabled={!enabled}>
+    <legend>Source</legend>
+    <div class="source-row">
+      <label class="radio-pill" class:active={source === 'local-llm'}>
+        <input
+          type="radio"
+          name="ai-source"
+          value="local-llm"
+          bind:group={source}
+          onchange={handleSourceChange}
+          data-testid="settings-ai-source-local-llm"
+        />
+        Local LLM
+      </label>
+      <label class="radio-pill" class:active={source === 'coding-agent'}>
+        <input
+          type="radio"
+          name="ai-source"
+          value="coding-agent"
+          bind:group={source}
+          onchange={handleSourceChange}
+          data-testid="settings-ai-source-coding-agent"
+        />
+        Coding Agent
+      </label>
+      <label class="radio-pill" class:active={source === 'openai-compat'}>
+        <input
+          type="radio"
+          name="ai-source"
+          value="openai-compat"
+          bind:group={source}
+          onchange={handleSourceChange}
+          data-testid="settings-ai-source-openai-compat"
+        />
+        OpenAI-compatible
+      </label>
     </div>
+    {#if showReady}
+      {#if ready?.ready}
+        <div class="status-line ok">
+          <Check size={14} /> Ready
+          {#if ready.resolvedPath}
+            <span class="status-detail">at {ready.resolvedPath}</span>
+          {/if}
+        </div>
+      {:else}
+        <div class="status-line bad">
+          <AlertCircle size={14} /> Not ready
+          {#if ready?.reason}<span class="status-detail">{ready.reason}</span
+            >{/if}
+        </div>
+      {/if}
+    {/if}
   </fieldset>
 
-  <fieldset class="group" disabled={!enabled}>
-    <legend>Model</legend>
-
-    <div class="field">
-      <label for="settings-ai-model">Choose model:</label>
-      <select
-        id="settings-ai-model"
-        bind:value={selectedModelId}
-        onchange={handleModelChange}
-        data-testid="settings-ai-model"
-      >
-        {#each CURATED_MODELS as m (m.id)}
-          <option value={m.id}>
-            {m.name} (~{formatBytes(m.sizeBytes)})
-          </option>
-        {/each}
-        <option value="custom">Custom GGUF URL…</option>
-      </select>
-    </div>
-
-    {#if selectedEntry}
-      <div class="model-state">
-        {#if selectedEntry.status === 'ready'}
-          <span class="status-ok">
-            <Sparkles size={12} /> Downloaded · {formatBytes(
-              selectedEntry.sizeBytes,
-            )}
+  {#if source === 'local-llm'}
+    <fieldset class="group" disabled={!enabled}>
+      <legend>Hardware</legend>
+      <div class="hardware">
+        {#if hardwareLoading}
+          <span class="spinner" aria-label="Detecting hardware">
+            <Loader2 size={16} />
           </span>
-          <button
-            type="button"
-            class="btn-secondary"
-            onclick={() => startCuratedDownload(selectedEntry.id)}
+          <span class="hardware-loading">Detecting GPU support…</span>
+        {:else if hardwareError}
+          <Cpu size={16} />
+          <span class="hardware-error"
+            >Detection failed — falling back to CPU. {hardwareError}</span
           >
-            <RotateCcw size={12} /> Re-download
-          </button>
-          <button
-            type="button"
-            class="btn-secondary"
-            onclick={() => removeModel(selectedEntry.id)}
-          >
-            <Trash2 size={12} /> Remove
-          </button>
-        {:else if selectedEntry.status === 'downloading'}
-          {@const p = selectedEntry.downloadProgress}
-          <div class="progress">
-            <div class="progress-bar">
-              <div
-                class="progress-bar-fill"
-                style:width={p && p.totalBytes
-                  ? `${Math.min(100, (p.receivedBytes / p.totalBytes) * 100).toFixed(1)}%`
-                  : '0%'}
-              ></div>
-            </div>
-            <div class="progress-text">
-              {p
-                ? `${formatBytes(p.receivedBytes)} / ${formatBytes(p.totalBytes)} · ${formatRate(p.bytesPerSec)}`
-                : 'Starting…'}
-            </div>
-          </div>
-          <button
-            type="button"
-            class="btn-secondary"
-            onclick={() => cancelDownload(selectedEntry.id)}
-          >
-            <X size={12} /> Cancel
-          </button>
-        {:else}
-          <span class="status-pending">Not downloaded yet.</span>
-          <button
-            type="button"
-            class="btn-primary-small"
-            onclick={() => startCuratedDownload(selectedEntry.id)}
-            data-testid="settings-ai-download"
-          >
-            Download
-          </button>
+        {:else if hardware}
+          <Cpu size={16} />
+          <span>{gpuLabel(hardware)}</span>
         {/if}
       </div>
-    {/if}
+    </fieldset>
 
-    {#if selectedModelId === 'custom'}
+    <fieldset class="group" disabled={!enabled}>
+      <legend>Model</legend>
+
       <div class="field">
-        <label for="settings-ai-custom-url">Custom GGUF URL:</label>
-        <input
-          id="settings-ai-custom-url"
-          type="text"
-          placeholder="https://huggingface.co/.../model.gguf"
-          bind:value={customGgufUrl}
-          onblur={() => onChange({ customGgufUrl })}
-          data-testid="settings-ai-custom-url"
-        />
-      </div>
-      <div class="field">
-        <label for="settings-ai-custom-label">Label (optional):</label>
-        <input
-          id="settings-ai-custom-label"
-          type="text"
-          placeholder="My custom model"
-          bind:value={customLabel}
-        />
-      </div>
-      <div class="custom-actions">
-        <button
-          type="button"
-          class="btn-primary-small"
-          onclick={startCustomDownload}
+        <label for="settings-ai-model">Choose model:</label>
+        <select
+          id="settings-ai-model"
+          bind:value={selectedModelId}
+          onchange={handleModelChange}
+          data-testid="settings-ai-model"
         >
-          Download custom
-        </button>
+          {#each CURATED_MODELS as m (m.id)}
+            <option value={m.id}>
+              {m.name} (~{formatBytes(m.sizeBytes)})
+            </option>
+          {/each}
+          <option value="custom">Custom GGUF URL…</option>
+        </select>
       </div>
-    {/if}
 
-    {#if downloadedExtras.length > 0}
-      <div class="downloaded-list">
-        <div class="downloaded-header">Other downloaded models:</div>
-        {#each downloadedExtras as m (m.id)}
-          <div class="downloaded-row">
-            <span class="downloaded-name">{m.name}</span>
-            <span class="downloaded-size">{formatBytes(m.sizeBytes)}</span>
+      {#if selectedEntry}
+        <div class="model-state">
+          {#if selectedEntry.status === 'ready'}
+            <span class="status-ok">
+              <Sparkles size={12} /> Downloaded · {formatBytes(
+                selectedEntry.sizeBytes,
+              )}
+            </span>
             <button
               type="button"
               class="btn-secondary"
-              onclick={() => {
-                selectedModelId = m.id;
-                onChange({ selectedModelId: m.id });
-              }}
+              onclick={() => startCuratedDownload(selectedEntry.id)}
             >
-              Use
+              <RotateCcw size={12} /> Re-download
             </button>
             <button
               type="button"
               class="btn-secondary"
-              onclick={() => removeModel(m.id)}
+              onclick={() => removeModel(selectedEntry.id)}
             >
               <Trash2 size={12} /> Remove
             </button>
-          </div>
-        {/each}
-      </div>
-    {/if}
+          {:else if selectedEntry.status === 'downloading'}
+            {@const p = selectedEntry.downloadProgress}
+            <div class="progress">
+              <div class="progress-bar">
+                <div
+                  class="progress-bar-fill"
+                  style:width={p && p.totalBytes
+                    ? `${Math.min(100, (p.receivedBytes / p.totalBytes) * 100).toFixed(1)}%`
+                    : '0%'}
+                ></div>
+              </div>
+              <div class="progress-text">
+                {p
+                  ? `${formatBytes(p.receivedBytes)} / ${formatBytes(p.totalBytes)} · ${formatRate(p.bytesPerSec)}`
+                  : 'Starting…'}
+              </div>
+            </div>
+            <button
+              type="button"
+              class="btn-secondary"
+              onclick={() => cancelDownload(selectedEntry.id)}
+            >
+              <X size={12} /> Cancel
+            </button>
+          {:else}
+            <span class="status-pending">Not downloaded yet.</span>
+            <button
+              type="button"
+              class="btn-primary-small"
+              onclick={() => startCuratedDownload(selectedEntry.id)}
+              data-testid="settings-ai-download"
+            >
+              Download
+            </button>
+          {/if}
+        </div>
+      {/if}
 
-    <label class="checkbox-row keep-loaded">
-      <input
-        type="checkbox"
-        bind:checked={keepModelLoaded}
-        onchange={handleKeepLoadedToggle}
-        data-testid="settings-ai-keep-loaded"
-      />
-      <span>
-        Keep model loaded in memory
-        <span class="hint">
-          On — model stays in GPU/RAM the whole session, every Generate starts
-          instantly. Off — model loads when you enter the commit view or open
-          New Branch, unloads when you leave.
+      {#if selectedModelId === 'custom'}
+        <div class="field">
+          <label for="settings-ai-custom-url">Custom GGUF URL:</label>
+          <input
+            id="settings-ai-custom-url"
+            type="text"
+            placeholder="https://huggingface.co/.../model.gguf"
+            bind:value={customGgufUrl}
+            onblur={() => onChange({ customGgufUrl })}
+            data-testid="settings-ai-custom-url"
+          />
+        </div>
+        <div class="field">
+          <label for="settings-ai-custom-label">Label (optional):</label>
+          <input
+            id="settings-ai-custom-label"
+            type="text"
+            placeholder="My custom model"
+            bind:value={customLabel}
+          />
+        </div>
+        <div class="custom-actions">
+          <button
+            type="button"
+            class="btn-primary-small"
+            onclick={startCustomDownload}
+          >
+            Download custom
+          </button>
+        </div>
+      {/if}
+
+      {#if downloadedExtras.length > 0}
+        <div class="downloaded-list">
+          <div class="downloaded-header">Other downloaded models:</div>
+          {#each downloadedExtras as m (m.id)}
+            <div class="downloaded-row">
+              <span class="downloaded-name">{m.name}</span>
+              <span class="downloaded-size">{formatBytes(m.sizeBytes)}</span>
+              <button
+                type="button"
+                class="btn-secondary"
+                onclick={() => {
+                  selectedModelId = m.id;
+                  onChange({ selectedModelId: m.id });
+                }}
+              >
+                Use
+              </button>
+              <button
+                type="button"
+                class="btn-secondary"
+                onclick={() => removeModel(m.id)}
+              >
+                <Trash2 size={12} /> Remove
+              </button>
+            </div>
+          {/each}
+        </div>
+      {/if}
+
+      <label class="checkbox-row keep-loaded">
+        <input
+          type="checkbox"
+          bind:checked={keepModelLoaded}
+          onchange={handleKeepLoadedToggle}
+          data-testid="settings-ai-keep-loaded"
+        />
+        <span>
+          Keep model loaded in memory
+          <span class="hint">
+            On — model stays in GPU/RAM the whole session, every Generate starts
+            instantly. Off — model loads when you enter the commit view or open
+            New Branch, unloads when you leave.
+          </span>
         </span>
-      </span>
-    </label>
-  </fieldset>
+      </label>
+    </fieldset>
+  {:else if source === 'coding-agent'}
+    <fieldset class="group" disabled={!enabled}>
+      <legend>Coding Agent</legend>
+      <div class="field">
+        <label for="settings-ai-coding-agent-tool">Tool:</label>
+        <select
+          id="settings-ai-coding-agent-tool"
+          bind:value={codingAgentTool}
+          onchange={handleCodingAgentToolChange}
+          data-testid="settings-ai-coding-agent-tool"
+        >
+          <option value="claude">Claude Code (claude)</option>
+          <option value="codex">Codex CLI (codex)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="settings-ai-coding-agent-path">Binary path:</label>
+        <input
+          id="settings-ai-coding-agent-path"
+          type="text"
+          placeholder="(empty — find on PATH)"
+          bind:value={codingAgentBinaryPath}
+          onblur={handleCodingAgentBinaryPathChange}
+          data-testid="settings-ai-coding-agent-path"
+        />
+      </div>
+      <div class="model-state">
+        <button
+          type="button"
+          class="btn-secondary"
+          onclick={() => void refreshReady()}
+        >
+          <RefreshCw size={12} /> Re-check
+        </button>
+        <span class="hint hint-inline">
+          Both CLIs already handle their own auth and stream tokens. The agent
+          inherits the active repo's working directory.
+        </span>
+      </div>
+    </fieldset>
+  {:else if source === 'openai-compat'}
+    <fieldset class="group" disabled={!enabled}>
+      <legend>OpenAI-compatible</legend>
+      <div class="field">
+        <label for="settings-ai-openai-url">Base URL:</label>
+        <input
+          id="settings-ai-openai-url"
+          type="text"
+          placeholder="https://api.openai.com"
+          bind:value={openAIBaseUrl}
+          onblur={() => handleOpenAIChange('openAIBaseUrl')}
+          data-testid="settings-ai-openai-url"
+        />
+      </div>
+      <div class="field">
+        <label for="settings-ai-openai-model">Model:</label>
+        <input
+          id="settings-ai-openai-model"
+          type="text"
+          placeholder="gpt-4o-mini"
+          bind:value={openAIModel}
+          onblur={() => handleOpenAIChange('openAIModel')}
+          data-testid="settings-ai-openai-model"
+        />
+      </div>
+      <div class="field">
+        <label for="settings-ai-openai-key">API key:</label>
+        <input
+          id="settings-ai-openai-key"
+          type="password"
+          placeholder="sk-…"
+          bind:value={openAIApiKey}
+          onblur={() => handleOpenAIChange('openAIApiKey')}
+          data-testid="settings-ai-openai-key"
+        />
+      </div>
+      <div class="model-state">
+        <span class="hint hint-inline">
+          Works with any endpoint that speaks OpenAI's <code
+            >/v1/chat/completions</code
+          >
+          with <code>stream: true</code> — OpenRouter, Groq, Together, vLLM, LM Studio,
+          Ollama (OpenAI-compat mode), …
+        </span>
+      </div>
+    </fieldset>
+  {/if}
 </div>
 
 <style>
@@ -420,6 +620,54 @@
     color: var(--color-text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.04em;
+  }
+
+  .source-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .radio-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--color-text-primary);
+    background: var(--color-bg-base);
+  }
+
+  .radio-pill input {
+    accent-color: var(--color-text-accent);
+  }
+
+  .radio-pill.active {
+    border-color: var(--color-text-accent);
+    color: var(--color-text-accent);
+  }
+
+  .status-line {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+  }
+
+  .status-line.ok {
+    color: var(--color-text-primary);
+  }
+
+  .status-line.bad {
+    color: var(--color-text-secondary);
+    font-style: italic;
+  }
+
+  .status-detail {
+    color: var(--color-text-secondary);
   }
 
   .hardware {
@@ -470,6 +718,7 @@
   }
 
   .field input[type='text'],
+  .field input[type='password'],
   .field select {
     background: var(--color-bg-base);
     border: 1px solid var(--color-border);
@@ -483,6 +732,7 @@
   }
 
   .field input[type='text']:focus,
+  .field input[type='password']:focus,
   .field select:focus {
     border-color: var(--color-text-accent);
   }
@@ -611,11 +861,24 @@
     color: var(--color-text-primary);
   }
 
-  .keep-loaded .hint {
+  .hint {
     display: block;
     margin-top: 2px;
     font-size: 11px;
     color: var(--color-text-secondary);
     line-height: 1.4;
+  }
+
+  .hint.hint-inline {
+    margin-top: 0;
+    flex: 1;
+  }
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 11px;
+    background: var(--color-bg-base);
+    padding: 1px 4px;
+    border-radius: 3px;
   }
 </style>

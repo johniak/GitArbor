@@ -34,7 +34,7 @@
   // true). The hold suppresses idle eviction; the matching release on
   // unmount unloads the model unless `keepModelLoaded` is on.
   $effect(() => {
-    if (!aiStore.modelReady) return;
+    if (!aiStore.sourceReady) return;
     let cancelled = false;
     void (async () => {
       const r = await window.electronAPI.ai.holdModel();
@@ -247,7 +247,7 @@
           bind:value={branchName}
           autofocus
         />
-        {#if aiStore.modelReady}
+        {#if aiStore.sourceReady}
           {#if aiRequestId}
             <button
               type="button"

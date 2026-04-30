@@ -111,8 +111,18 @@ export interface DownloadedModelMeta {
   sha256?: string;
 }
 
+/** Which AI backend powers the Generate buttons. One global active source
+ *  per app — both branch name and commit message use the same one. */
+export type AISource = 'local-llm' | 'coding-agent' | 'openai-compat';
+
+/** When `source === 'coding-agent'` we shell out to one of these CLIs. */
+export type CodingAgentTool = 'codex' | 'claude';
+
 export interface AISettings {
   enabled: boolean;
+  /** Active source for both Generate features. */
+  source: AISource;
+  // ── local-llm ──────────────────────────────────────────────────
   selectedModelId: string;
   /** Only used when `selectedModelId === 'custom'` and the user has typed
    *  a URL but not yet downloaded. Persisted so they don't lose what they
@@ -120,8 +130,6 @@ export interface AISettings {
   customGgufUrl: string;
   /** Map of model id → metadata for downloaded files. */
   downloadedModels: Record<string, DownloadedModelMeta>;
-  temperature: number;
-  maxTokens: number;
   /**
    * When true, the model stays loaded in GPU/RAM for the lifetime of the
    * app session — first generation after enabling AI is slow but every
@@ -130,16 +138,33 @@ export interface AISettings {
    * dialog) and unloaded when they leave, freeing the memory.
    */
   keepModelLoaded: boolean;
+  // ── coding-agent ───────────────────────────────────────────────
+  codingAgentTool: CodingAgentTool;
+  /** Optional explicit binary path. Empty string means "find on PATH". */
+  codingAgentBinaryPath: string;
+  // ── openai-compat ──────────────────────────────────────────────
+  openAIBaseUrl: string;
+  openAIModel: string;
+  openAIApiKey: string;
+  // ── shared inference params ────────────────────────────────────
+  temperature: number;
+  maxTokens: number;
 }
 
 export const DEFAULT_AI_SETTINGS: AISettings = {
   enabled: false,
+  source: 'local-llm',
   selectedModelId: DEFAULT_MODEL_ID,
   customGgufUrl: '',
   downloadedModels: {},
+  keepModelLoaded: false,
+  codingAgentTool: 'claude',
+  codingAgentBinaryPath: '',
+  openAIBaseUrl: 'https://api.openai.com',
+  openAIModel: 'gpt-4o-mini',
+  openAIApiKey: '',
   temperature: 0.2,
   maxTokens: 256,
-  keepModelLoaded: false,
 };
 
 export type GpuKind = 'metal' | 'cuda' | 'vulkan' | 'cpu';
@@ -218,6 +243,17 @@ export interface AIDownloadOpts {
   label?: string;
 }
 
+/** Probe result for whether the active source is configured & runnable. */
+export interface SourceReadyInfo {
+  ready: boolean;
+  source: AISource;
+  /** Human-readable reason when `ready === false` (e.g. "Model not
+   *  downloaded", "claude CLI not found in PATH", "API key missing"). */
+  reason?: string;
+  /** For coding-agent: resolved absolute path to the binary, when found. */
+  resolvedPath?: string;
+}
+
 export interface AIAPI {
   getHardwareInfo(): Promise<HardwareInfo>;
   listModels(): Promise<ModelEntry[]>;
@@ -234,11 +270,15 @@ export interface AIAPI {
    * the model is kept warm (no idle eviction). Returns a holder id used
    * to release later. Resolves with empty `holderId` + `error` if AI is
    * disabled or no model is downloaded.
+   *
+   * For non-local sources this is a no-op (returns empty `holderId`).
    */
   holdModel(): Promise<{ holderId: string; error?: string }>;
   /** Release a previous `holdModel()`. When the last holder releases AND
    *  `keepModelLoaded` is false, the model is unloaded immediately. */
   releaseModel(holderId: string): Promise<void>;
+  /** Cheap probe: is the currently-selected source configured & runnable? */
+  getSourceReady(): Promise<SourceReadyInfo>;
   onToken(cb: (event: AITokenEvent) => void): () => void;
   onState(cb: (event: AIStateEvent) => void): () => void;
 }

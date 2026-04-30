@@ -4,7 +4,7 @@ import { DEFAULT_AI_SETTINGS, type AISettings } from './ai-types';
 export type Appearance = 'system' | 'light' | 'dark';
 
 export interface AppSettings {
-  schemaVersion: 3;
+  schemaVersion: 4;
   general: {
     authorName: string;
     authorEmail: string;
@@ -27,7 +27,7 @@ export interface AppSettings {
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
-  schemaVersion: 3,
+  schemaVersion: 4,
   general: {
     authorName: '',
     authorEmail: '',

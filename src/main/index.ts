@@ -846,6 +846,7 @@ ipcMain.handle(IPC.AI_HOLD_MODEL, () => aiService.holdModel());
 ipcMain.handle(IPC.AI_RELEASE_MODEL, (_event, holderId: string) =>
   aiService.releaseModel(holderId),
 );
+ipcMain.handle(IPC.AI_GET_SOURCE_READY, () => aiService.getSourceReady());
 
 app.on('before-quit', () => {
   flushRepoSettings();

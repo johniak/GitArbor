@@ -16,7 +16,7 @@ import {
 
 const FILE_NAME = 'app-settings.json';
 
-describe('app-settings (schema v3 + ai)', () => {
+describe('app-settings (schema v4 + ai)', () => {
   let tmpDir: string;
 
   beforeEach(() => {
@@ -30,15 +30,19 @@ describe('app-settings (schema v3 + ai)', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('loads defaults including ai.enabled=false when no file exists', () => {
+  it('loads defaults including ai.enabled=false and source=local-llm when no file exists', () => {
     const s = loadAppSettings();
     expect(s).toEqual(DEFAULT_APP_SETTINGS);
-    expect(s.schemaVersion).toBe(3);
+    expect(s.schemaVersion).toBe(4);
     expect(s.ai.enabled).toBe(false);
+    expect(s.ai.source).toBe('local-llm');
+    expect(s.ai.codingAgentTool).toBe('claude');
+    expect(s.ai.openAIBaseUrl).toBe('https://api.openai.com');
+    expect(s.ai.openAIApiKey).toBe('');
     expect(s.ai.downloadedModels).toEqual({});
   });
 
-  it('upgrades a v2 file (no ai key) to v3 via deep-merge', () => {
+  it('upgrades a v2 file (no ai key) to v4 via deep-merge', () => {
     fs.writeFileSync(
       path.join(tmpDir, FILE_NAME),
       JSON.stringify({
@@ -53,7 +57,38 @@ describe('app-settings (schema v3 + ai)', () => {
     expect(s.general.authorName).toBe('Old User');
     expect(s.ai).toBeDefined();
     expect(s.ai.enabled).toBe(false);
+    expect(s.ai.source).toBe('local-llm');
     expect(s.ai.selectedModelId).toBe(DEFAULT_APP_SETTINGS.ai.selectedModelId);
+  });
+
+  it('upgrades a v3 file (ai with no source) to v4 via deep-merge', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, FILE_NAME),
+      JSON.stringify({
+        schemaVersion: 3,
+        general: { authorName: 'Existing User' },
+        ai: {
+          enabled: true,
+          selectedModelId: 'qwen-2.5-coder-1.5b-q4',
+          customGgufUrl: '',
+          downloadedModels: {},
+          temperature: 0.2,
+          maxTokens: 256,
+          keepModelLoaded: true,
+        },
+      }),
+    );
+    _resetAppSettingsState();
+    configureAppSettings(tmpDir);
+
+    const s = loadAppSettings();
+    expect(s.general.authorName).toBe('Existing User');
+    expect(s.ai.enabled).toBe(true);
+    expect(s.ai.keepModelLoaded).toBe(true);
+    // New v4 defaults filled in:
+    expect(s.ai.source).toBe('local-llm');
+    expect(s.ai.codingAgentTool).toBe('claude');
+    expect(s.ai.openAIBaseUrl).toBe('https://api.openai.com');
   });
 
   it('updating ai.selectedModelId does not clobber general fields', () => {
@@ -63,7 +98,23 @@ describe('app-settings (schema v3 + ai)', () => {
     });
     expect(next.general.authorName).toBe('Alice');
     expect(next.ai.selectedModelId).toBe('qwen-2.5-coder-3b-q4');
-    expect(next.schemaVersion).toBe(3);
+    expect(next.schemaVersion).toBe(4);
+  });
+
+  it('persists openAI source config across updates', () => {
+    updateAppSettings({
+      ai: {
+        source: 'openai-compat',
+        openAIBaseUrl: 'https://openrouter.ai/api',
+        openAIModel: 'anthropic/claude-3.5-sonnet',
+        openAIApiKey: 'sk-or-test',
+      },
+    });
+    const s = loadAppSettings();
+    expect(s.ai.source).toBe('openai-compat');
+    expect(s.ai.openAIBaseUrl).toBe('https://openrouter.ai/api');
+    expect(s.ai.openAIModel).toBe('anthropic/claude-3.5-sonnet');
+    expect(s.ai.openAIApiKey).toBe('sk-or-test');
   });
 
   it('persists ai changes to disk', () => {

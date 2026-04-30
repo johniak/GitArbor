@@ -238,6 +238,7 @@ const api: ElectronAPI = {
     holdModel: () => ipcRenderer.invoke(IPC.AI_HOLD_MODEL),
     releaseModel: (holderId: string) =>
       ipcRenderer.invoke(IPC.AI_RELEASE_MODEL, holderId),
+    getSourceReady: () => ipcRenderer.invoke(IPC.AI_GET_SOURCE_READY),
     onToken: (cb: (event: AITokenEvent) => void) => {
       const listener = (_: unknown, event: AITokenEvent) => cb(event);
       ipcRenderer.on(IPC.AI_INFER_TOKEN, listener);
