@@ -67,7 +67,7 @@ const config: ForgeConfig = {
   },
   rebuildConfig: {},
   hooks: {
-    packageAfterCopy: async (_config, buildPath) => {
+    packageAfterCopy: async (_config, buildPath, _electronVersion, platform, arch) => {
       // Copy external JS modules
       const srcModules = path.join(process.cwd(), 'node_modules');
       const destModules = path.join(buildPath, 'node_modules');
@@ -79,12 +79,31 @@ const config: ForgeConfig = {
         }
       }
 
-      // Copy any installed `@node-llama-cpp/<platform>-<arch>-<backend>`
-      // packages — these contain the prebuilt llama.cpp `.node` binaries.
+      // Only copy the `@node-llama-cpp/<platform>-<arch>-*` packages that
+      // match the target build. Without this filter, RPM's brp-strip tries
+      // to strip cross-arch native binaries (e.g. linux-arm64 `.node` files
+      // shipped in a linux-x64 build) and fails the build.
+      const platformPrefix =
+        platform === 'darwin'
+          ? `mac-${arch}`
+          : platform === 'linux'
+            ? `linux-${arch}`
+            : platform === 'win32'
+              ? `win-${arch}`
+              : null;
+
       const scopeSrc = path.join(srcModules, NODE_LLAMA_CPP_BINARY_SCOPE);
       const scopeDest = path.join(destModules, NODE_LLAMA_CPP_BINARY_SCOPE);
-      if (fs.existsSync(scopeSrc)) {
-        fs.cpSync(scopeSrc, scopeDest, { recursive: true });
+      if (platformPrefix && fs.existsSync(scopeSrc)) {
+        fs.mkdirSync(scopeDest, { recursive: true });
+        for (const pkg of fs.readdirSync(scopeSrc)) {
+          if (!pkg.startsWith(platformPrefix)) continue;
+          fs.cpSync(
+            path.join(scopeSrc, pkg),
+            path.join(scopeDest, pkg),
+            { recursive: true },
+          );
+        }
       }
 
       // Copy app icon (overwrite default electron.icns on macOS)
