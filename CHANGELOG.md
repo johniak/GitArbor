@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog 1.1](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-05-01
+
+### Added
+
+- Side-by-side diff view, toggleable from a new toolbar in every DiffViewer mount site (file-status, history, file log, interactive rebase). Per-line staging stays unified-only in v1; hunk-level Stage/Unstage works in both modes.
+- Syntax highlighting in diffs via Shiki — TypeScript, JavaScript, Python, Go, Rust, Java, Kotlin, Svelte, CSS, HTML, JSON, YAML, shell, Markdown.
+- Word-level diff for paired modification lines (`-` immediately followed by `+`); changed words are highlighted instead of the whole line.
+- Settings → Diff tab with persistent app-wide preferences (view mode, syntax highlight, word diff) in `AppSettings.diff` (schema 4 → 5, deep-merge upgrade for v4 files).
+
 ## [0.8.4] - 2026-05-01
 
 ### Added
@@ -26,6 +35,7 @@ The format is based on [Keep a Changelog 1.1](https://keepachangelog.com/en/1.1.
 
 - File log + annotate dialogs — per-file commit history (`git log --follow <path>`) and per-line blame view, both reachable from file context menus.
 
-[Unreleased]: https://github.com/johniak/gitarbor/compare/v0.8.4...HEAD
+[Unreleased]: https://github.com/johniak/gitarbor/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/johniak/gitarbor/releases/tag/v0.9.0
 [0.8.4]: https://github.com/johniak/gitarbor/releases/tag/v0.8.4
 [0.7.0]: https://github.com/johniak/gitarbor/releases/tag/v0.7.0
