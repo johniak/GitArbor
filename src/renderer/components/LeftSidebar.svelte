@@ -431,7 +431,7 @@
         {#each worktrees as wt (wt.path)}
           <div
             class="tree-item worktree-item"
-            class:current-branch={wt.path === currentWorktreePath}
+            class:current-worktree={wt.path === currentWorktreePath}
             title={wt.path}
             ondblclick={() => onOpenWorktree?.(wt.path)}
             oncontextmenu={(e) => showWorktreeMenu(e, wt)}
@@ -793,7 +793,8 @@
     background: var(--color-bg-hover);
   }
 
-  .tree-item.current-branch {
+  .tree-item.current-branch,
+  .tree-item.current-worktree {
     color: var(--color-text-white);
     font-weight: 700;
   }
