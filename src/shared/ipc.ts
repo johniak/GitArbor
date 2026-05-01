@@ -7,6 +7,7 @@ import type {
   ChangedFile,
   FileDiff,
   WorkingStatus,
+  Worktree,
 } from '../renderer/types';
 import type { DeepPartial } from './deep-merge';
 import type { RepoSettings } from './repo-settings-types';
@@ -24,6 +25,7 @@ export type {
   RunInteractiveRebaseResult,
 } from './rebase-types';
 export type { BlameLine } from './blame-parser';
+export type { Worktree } from '../renderer/types';
 
 export type { DeepPartial } from './deep-merge';
 export type { RepoSettings } from './repo-settings-types';
@@ -139,6 +141,13 @@ export const IPC = {
   GIT_STAGE_LINES: 'git:stage-lines',
   GIT_UNSTAGE_LINES: 'git:unstage-lines',
   GIT_DISCARD_LINES: 'git:discard-lines',
+  GIT_WORKTREE_LIST: 'git:worktree-list',
+  GIT_WORKTREE_ADD: 'git:worktree-add',
+  GIT_WORKTREE_REMOVE: 'git:worktree-remove',
+  GIT_WORKTREE_LOCK: 'git:worktree-lock',
+  GIT_WORKTREE_UNLOCK: 'git:worktree-unlock',
+  GIT_WORKTREE_DIRTY_STATUS: 'git:worktree-dirty-status',
+  GIT_WORKTREE_PRUNE: 'git:worktree-prune',
   SHELL_OPEN_FILE: 'shell:open-file',
   SHELL_OPEN_REPO_FOLDER: 'shell:open-repo-folder',
   SHELL_OPEN_TERMINAL: 'shell:open-terminal',
@@ -146,6 +155,7 @@ export const IPC = {
   REPO_CHANGED: 'repo:changed',
   REPO_LOAD_LIST: 'repo:load-list',
   REPO_OPEN: 'repo:open',
+  REPO_OPEN_EPHEMERAL: 'repo:open-ephemeral',
   REPO_REMOVE_FROM_LIST: 'repo:remove-from-list',
   REPO_ADD_EXISTING: 'repo:add-existing',
   REPO_CLONE: 'repo:clone',
@@ -303,6 +313,24 @@ export interface GitAPI {
     hunkIndex: number,
     lineIndices: number[],
   ): Promise<void>;
+  // ── Worktrees ──────────────────────────────────────────────
+  getWorktrees(): Promise<Worktree[]>;
+  addWorktree(opts: {
+    path: string;
+    base: string;
+    newBranch?: string;
+  }): Promise<{ error?: string }>;
+  removeWorktree(opts: {
+    path: string;
+    force?: boolean;
+  }): Promise<{ error?: string }>;
+  lockWorktree(opts: {
+    path: string;
+    reason?: string;
+  }): Promise<{ error?: string }>;
+  unlockWorktree(worktreePath: string): Promise<{ error?: string }>;
+  getWorktreeDirtyStatus(paths: string[]): Promise<Record<string, boolean>>;
+  pruneWorktrees(): Promise<{ error?: string }>;
 }
 
 export interface RepoListEntry {
@@ -317,6 +345,9 @@ export interface RepoAPI {
   onRepoChanged(callback: (path: string) => void): void;
   loadList(): Promise<RepoListEntry[]>;
   open(path: string): Promise<{ success: boolean; error?: string }>;
+  /** Switch the active repo without touching Recent Repositories or
+   *  rebuilding the application menu. Used for worktree tab switching. */
+  openEphemeral(path: string): Promise<{ success: boolean; error?: string }>;
   removeFromList(path: string): Promise<void>;
   addExisting(path: string): Promise<RepoListEntry | null>;
   clone(

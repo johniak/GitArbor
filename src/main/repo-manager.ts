@@ -121,7 +121,10 @@ export class RepoManager {
     return this.currentPath;
   }
 
-  async openRepo(repoPath: string): Promise<boolean> {
+  async openRepo(
+    repoPath: string,
+    opts: { ephemeral?: boolean } = {},
+  ): Promise<boolean> {
     // Validate path exists
     if (!fs.existsSync(repoPath)) return false;
 
@@ -134,8 +137,12 @@ export class RepoManager {
     const isRepo = await git.checkIsRepo();
     if (!isRepo) return false;
 
-    // Update DB
-    addRecentRepo(this.db, repoPath);
+    // Worktree-tab switching uses ephemeral mode so we don't pollute the
+    // Recent Repositories list with worktree paths — only "real" repo
+    // opens (Browser, dialog, file menu) update the DB.
+    if (!opts.ephemeral) {
+      addRecentRepo(this.db, repoPath);
+    }
 
     // Flush any pending settings writes for the previous repo before switching
     const previousPath = this.currentPath;
@@ -157,8 +164,9 @@ export class RepoManager {
       .filter((w) => w.getTitle() !== 'Repository Browser')
       .forEach((w) => w.setTitle(title));
 
-    // Rebuild menu with updated recents
-    this.buildMenu();
+    // Rebuild menu with updated recents (skip on ephemeral — recents
+    // didn't change).
+    if (!opts.ephemeral) this.buildMenu();
 
     return true;
   }

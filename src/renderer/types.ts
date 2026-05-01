@@ -167,6 +167,39 @@ export interface WorkingStatus {
   hasChanges: boolean;
 }
 
+// ── Worktrees ────────────────────────────────────────────────
+
+/**
+ * A single linked worktree entry, parsed from `git worktree list --porcelain`.
+ * The first entry in a list is conventionally the "main" worktree.
+ */
+export interface Worktree {
+  /** Absolute filesystem path to the worktree's working directory. */
+  path: string;
+  /** Commit hash currently checked out. Empty string for bare main. */
+  head: string;
+  /** Branch name (without refs/heads/ prefix). Undefined when detached. */
+  branch?: string;
+  /** True when the worktree is on a detached HEAD. */
+  isDetached: boolean;
+  /** True for the first entry returned by `git worktree list` — the
+   *  worktree containing the actual `.git/` directory. Cannot be removed
+   *  via `git worktree remove`. */
+  isMain: boolean;
+  /** True when the main repo itself is bare (no working copy). */
+  isBare: boolean;
+  /** Locked via `git worktree lock`. */
+  locked: boolean;
+  lockReason?: string;
+  /** Git considers this worktree prunable (e.g. its directory was deleted
+   *  externally or it has been moved). */
+  prunable: boolean;
+  prunableReason?: string;
+  /** Has uncommitted changes. Populated lazily for tabs only — undefined
+   *  means "not yet probed". */
+  dirty?: boolean;
+}
+
 // ── Toolbar Actions ──────────────────────────────────────────
 
 export type ToolbarAction =

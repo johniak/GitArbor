@@ -1,7 +1,7 @@
 <script lang="ts">
   import fuzzysort from 'fuzzysort';
-  import { Folder } from '@lucide/svelte';
-  import type { Branch, SidebarData, SidebarView } from '../types';
+  import { Folder, GitBranch, Lock, Home } from '@lucide/svelte';
+  import type { Branch, SidebarData, SidebarView, Worktree } from '../types';
   import { settingsStore } from '../settings-store.svelte';
 
   interface BranchTreeNode {
@@ -71,7 +71,17 @@
     onDeleteBranch?: (name: string) => void;
     onCheckoutRemoteBranch?: (remoteName: string, branch: string) => void;
     onNewBranch?: () => void;
+    onCreateWorktreeFromBranch?: (branch: string) => void;
     onScrollToBranch?: (branchName: string) => void;
+    // Worktrees
+    worktrees?: Worktree[];
+    currentWorktreePath?: string | null;
+    onOpenWorktree?: (path: string) => void;
+    onCreateWorktree?: () => void;
+    onLockWorktree?: (path: string) => void;
+    onUnlockWorktree?: (path: string) => void;
+    onRemoveWorktree?: (path: string) => void;
+    onCopyWorktreePath?: (path: string) => void;
   };
 
   let {
@@ -86,7 +96,16 @@
     onDeleteBranch,
     onCheckoutRemoteBranch,
     onNewBranch,
+    onCreateWorktreeFromBranch,
     onScrollToBranch,
+    worktrees = [],
+    currentWorktreePath = null,
+    onOpenWorktree,
+    onCreateWorktree,
+    onLockWorktree,
+    onUnlockWorktree,
+    onRemoveWorktree,
+    onCopyWorktreePath,
   }: Props = $props();
 
   const navItems: NavItem[] = [
@@ -101,6 +120,7 @@
     'Tags',
     'Remotes',
     'Stashes',
+    'Worktrees',
   ]);
   let expandedState = $state<Record<string, boolean>>({});
 
@@ -116,7 +136,7 @@
   function sectionExpanded(label: string): boolean {
     if (PERSISTED_SECTION_KEYS.has(label)) {
       return settingsStore.settings.sidebarSections[
-        label as 'Branches' | 'Tags' | 'Remotes' | 'Stashes'
+        label as 'Branches' | 'Tags' | 'Remotes' | 'Stashes' | 'Worktrees'
       ];
     }
     return expandedState[label] ?? true;
@@ -134,7 +154,12 @@
 
   function toggleSection(label: string) {
     if (PERSISTED_SECTION_KEYS.has(label)) {
-      const key = label as 'Branches' | 'Tags' | 'Remotes' | 'Stashes';
+      const key = label as
+        | 'Branches'
+        | 'Tags'
+        | 'Remotes'
+        | 'Stashes'
+        | 'Worktrees';
       settingsStore.update({
         sidebarSections: {
           [key]: !settingsStore.settings.sidebarSections[key],
@@ -149,14 +174,32 @@
   let contextMenu = $state<{ x: number; y: number; branch: string } | null>(
     null,
   );
+  let worktreeMenu = $state<{
+    x: number;
+    y: number;
+    worktree: Worktree;
+  } | null>(null);
 
   function showContextMenu(e: MouseEvent, branch: string) {
     e.preventDefault();
     contextMenu = { x: e.clientX, y: e.clientY, branch };
   }
 
+  function showWorktreeMenu(e: MouseEvent, worktree: Worktree) {
+    e.preventDefault();
+    worktreeMenu = { x: e.clientX, y: e.clientY, worktree };
+  }
+
   function closeContextMenu() {
     contextMenu = null;
+    worktreeMenu = null;
+  }
+
+  function worktreeLabel(w: Worktree): string {
+    if (w.isDetached) {
+      return w.head ? `(detached @ ${w.head.slice(0, 7)})` : '(detached)';
+    }
+    return w.branch ?? w.path.split('/').pop() ?? w.path;
   }
 
   function fuzzyFilter(items: string[]): string[] {
@@ -358,6 +401,62 @@
         {/if}
       {/if}
     </div>
+
+    <!-- Worktrees — flat list with branch + lock icon -->
+    <div class="tree-section">
+      <div class="section-header-row">
+        <button
+          class="section-header"
+          onclick={() => toggleSection('Worktrees')}
+        >
+          <span class="expand-arrow"
+            >{sectionExpanded('Worktrees') ? '▾' : '▸'}</span
+          >
+          Worktrees
+        </button>
+        <button
+          type="button"
+          class="section-action"
+          title="Create worktree"
+          onclick={(e) => {
+            e.stopPropagation();
+            onCreateWorktree?.();
+          }}
+          data-testid="sidebar-worktree-create"
+        >
+          +
+        </button>
+      </div>
+      {#if sectionExpanded('Worktrees')}
+        {#each worktrees as wt (wt.path)}
+          <div
+            class="tree-item worktree-item"
+            class:current-branch={wt.path === currentWorktreePath}
+            title={wt.path}
+            ondblclick={() => onOpenWorktree?.(wt.path)}
+            oncontextmenu={(e) => showWorktreeMenu(e, wt)}
+          >
+            {#if wt.isMain}
+              <Home size={11} />
+            {:else}
+              <GitBranch size={11} />
+            {/if}
+            <span class="worktree-label">{worktreeLabel(wt)}</span>
+            {#if wt.locked}
+              <Lock size={10} class="worktree-lock" />
+            {/if}
+            {#if wt.prunable}
+              <span class="worktree-stale" title={wt.prunableReason ?? ''}
+                >stale</span
+              >
+            {/if}
+          </div>
+        {/each}
+        {#if worktrees.length === 0}
+          <div class="tree-item empty">No worktrees</div>
+        {/if}
+      {/if}
+    </div>
   </div>
 
   <div class="filter-bar">
@@ -425,6 +524,16 @@
       </button>
       <div class="context-separator"></div>
       <button
+        class="context-item"
+        onclick={() => {
+          onCreateWorktreeFromBranch?.(contextMenu!.branch);
+          closeContextMenu();
+        }}
+      >
+        Create worktree from {contextMenu.branch}…
+      </button>
+      <div class="context-separator"></div>
+      <button
         class="context-item context-item-danger"
         disabled={contextMenu.branch === currentBranch}
         title={contextMenu.branch === currentBranch
@@ -438,6 +547,73 @@
         Delete {contextMenu.branch}...
       </button>
     {/if}
+  </div>
+{/if}
+
+{#if worktreeMenu}
+  <div
+    class="context-menu"
+    style="left:{worktreeMenu.x}px;top:{worktreeMenu.y}px"
+    onclick={(e) => e.stopPropagation()}
+  >
+    <button
+      class="context-item"
+      onclick={() => {
+        onOpenWorktree?.(worktreeMenu!.worktree.path);
+        closeContextMenu();
+      }}
+    >
+      Open this worktree
+    </button>
+    <button
+      class="context-item"
+      onclick={() => {
+        onCopyWorktreePath?.(worktreeMenu!.worktree.path);
+        closeContextMenu();
+      }}
+    >
+      Copy path
+    </button>
+    <div class="context-separator"></div>
+    {#if worktreeMenu.worktree.locked}
+      <button
+        class="context-item"
+        onclick={() => {
+          onUnlockWorktree?.(worktreeMenu!.worktree.path);
+          closeContextMenu();
+        }}
+      >
+        Unlock worktree
+      </button>
+    {:else}
+      <button
+        class="context-item"
+        disabled={worktreeMenu.worktree.isMain}
+        title={worktreeMenu.worktree.isMain
+          ? 'Cannot lock the main worktree'
+          : ''}
+        onclick={() => {
+          onLockWorktree?.(worktreeMenu!.worktree.path);
+          closeContextMenu();
+        }}
+      >
+        Lock worktree
+      </button>
+    {/if}
+    <div class="context-separator"></div>
+    <button
+      class="context-item context-item-danger"
+      disabled={worktreeMenu.worktree.isMain}
+      title={worktreeMenu.worktree.isMain
+        ? 'Cannot remove the main worktree'
+        : ''}
+      onclick={() => {
+        onRemoveWorktree?.(worktreeMenu!.worktree.path);
+        closeContextMenu();
+      }}
+    >
+      Remove worktree…
+    </button>
   </div>
 {/if}
 
@@ -461,6 +637,57 @@
     flex-direction: column;
     gap: 2px;
     margin-bottom: 8px;
+  }
+
+  .section-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .section-action {
+    border: none;
+    background: transparent;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  .section-action:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-text-primary);
+  }
+
+  .worktree-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .worktree-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
+
+  :global(.worktree-lock) {
+    color: var(--color-text-secondary);
+    flex-shrink: 0;
+  }
+
+  .worktree-stale {
+    font-size: 9px;
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 1px 4px;
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
   }
 
   .nav-item {

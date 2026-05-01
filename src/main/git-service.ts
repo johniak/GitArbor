@@ -14,7 +14,9 @@ import type {
   DiffLine,
   WorkingStatus,
   FileStatus,
+  Worktree,
 } from '../renderer/types';
+import { parseWorktreePorcelain } from './worktree-parser';
 import { relativeDate } from '../shared/date-utils';
 import { parseBlamePorcelain, type BlameLine } from '../shared/blame-parser';
 
@@ -1215,6 +1217,90 @@ export class GitService {
     if (hunkIndex >= hunks.length) return;
     const filtered = this.filterRawHunk(hunks[hunkIndex], lineIndices, true);
     await this.applyPatchRaw(header + filtered, ['-R']);
+  }
+
+  // ── Worktrees ────────────────────────────────────────────────
+
+  /** List all worktrees attached to this repo. The first entry is the
+   *  main worktree (the one that owns the real `.git/`). */
+  async getWorktrees(): Promise<Worktree[]> {
+    const out = await this.git.raw(['worktree', 'list', '--porcelain']);
+    return parseWorktreePorcelain(out);
+  }
+
+  /**
+   * Create a new worktree.
+   *  - `base` is the branch / commit / tag the worktree starts from.
+   *  - When `newBranch` is set, git creates a fresh branch off `base`
+   *    inside the new worktree (`-b <newBranch>`).
+   *  - Otherwise the worktree checks out `base` directly. If `base` is
+   *    a branch already checked out elsewhere, git refuses with exit
+   *    128; we surface that as a thrown Error.
+   */
+  async addWorktree(opts: {
+    path: string;
+    base: string;
+    newBranch?: string;
+  }): Promise<void> {
+    const args = ['worktree', 'add'];
+    if (opts.newBranch) args.push('-b', opts.newBranch);
+    args.push(opts.path);
+    args.push(opts.base);
+    await this.git.raw(args);
+  }
+
+  /** Remove a worktree. With `force`, untracked changes are discarded
+   *  AND a locked worktree is force-removed (git semantics: `-f -f`). */
+  async removeWorktree(opts: { path: string; force?: boolean }): Promise<void> {
+    const args = ['worktree', 'remove'];
+    if (opts.force) args.push('--force', '--force');
+    args.push(opts.path);
+    await this.git.raw(args);
+  }
+
+  async lockWorktree(opts: { path: string; reason?: string }): Promise<void> {
+    const args = ['worktree', 'lock', opts.path];
+    if (opts.reason && opts.reason.trim()) {
+      args.push('--reason', opts.reason.trim());
+    }
+    await this.git.raw(args);
+  }
+
+  async unlockWorktree(worktreePath: string): Promise<void> {
+    await this.git.raw(['worktree', 'unlock', worktreePath]);
+  }
+
+  async pruneWorktrees(): Promise<void> {
+    await this.git.raw(['worktree', 'prune']);
+  }
+
+  /**
+   * Cheap dirty-check across N worktree paths. Each one runs against a
+   * separately-instantiated `simpleGit` because the SimpleGit instance
+   * we hold is bound to the currently-open worktree. Returns a map of
+   * worktree path → has-uncommitted-changes.
+   *
+   * Errors per-path (e.g. directory deleted externally) are swallowed
+   * and reported as `false` so the UI never breaks on a single missing
+   * worktree.
+   */
+  async getWorktreeDirtyStatus(
+    paths: string[],
+  ): Promise<Record<string, boolean>> {
+    const result: Record<string, boolean> = {};
+    await Promise.all(
+      paths.map(async (p) => {
+        try {
+          const status = await simpleGit(p, {
+            unsafe: { allowUnsafeEditor: true },
+          }).status();
+          result[p] = !status.isClean();
+        } catch {
+          result[p] = false;
+        }
+      }),
+    );
+    return result;
   }
 }
 

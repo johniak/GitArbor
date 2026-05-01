@@ -687,6 +687,87 @@ ipcMain.handle(
   ) => getGitService().discardLines(filePath, hunkIndex, lineIndices),
 );
 
+// ── Worktrees ──────────────────────────────────────────────
+ipcMain.handle(IPC.GIT_WORKTREE_LIST, () => getGitService().getWorktrees());
+
+ipcMain.handle(
+  IPC.GIT_WORKTREE_ADD,
+  async (
+    _event,
+    opts: { path: string; base: string; newBranch?: string },
+  ): Promise<{ error?: string }> => {
+    try {
+      await getGitService().addWorktree(opts);
+      notifyRepoChanged();
+      return {};
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e) };
+    }
+  },
+);
+
+ipcMain.handle(
+  IPC.GIT_WORKTREE_REMOVE,
+  async (
+    _event,
+    opts: { path: string; force?: boolean },
+  ): Promise<{ error?: string }> => {
+    try {
+      await getGitService().removeWorktree(opts);
+      notifyRepoChanged();
+      return {};
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e) };
+    }
+  },
+);
+
+ipcMain.handle(
+  IPC.GIT_WORKTREE_LOCK,
+  async (
+    _event,
+    opts: { path: string; reason?: string },
+  ): Promise<{ error?: string }> => {
+    try {
+      await getGitService().lockWorktree(opts);
+      notifyRepoChanged();
+      return {};
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e) };
+    }
+  },
+);
+
+ipcMain.handle(
+  IPC.GIT_WORKTREE_UNLOCK,
+  async (_event, worktreePath: string): Promise<{ error?: string }> => {
+    try {
+      await getGitService().unlockWorktree(worktreePath);
+      notifyRepoChanged();
+      return {};
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e) };
+    }
+  },
+);
+
+ipcMain.handle(IPC.GIT_WORKTREE_DIRTY_STATUS, (_event, paths: string[]) =>
+  getGitService().getWorktreeDirtyStatus(paths),
+);
+
+ipcMain.handle(
+  IPC.GIT_WORKTREE_PRUNE,
+  async (): Promise<{ error?: string }> => {
+    try {
+      await getGitService().pruneWorktrees();
+      notifyRepoChanged();
+      return {};
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e) };
+    }
+  },
+);
+
 // Repo IPC handlers
 ipcMain.handle(
   IPC.REPO_GET_CURRENT,
@@ -701,6 +782,20 @@ ipcMain.handle(IPC.REPO_OPEN, async (_event, targetPath: string) => {
     const ok = await repoManager.openRepo(targetPath);
     if (!ok) return { success: false, error: 'Not a valid git repository' };
     ensureMainWindow();
+    return { success: true };
+  } catch (e) {
+    return {
+      success: false,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+});
+
+ipcMain.handle(IPC.REPO_OPEN_EPHEMERAL, async (_event, targetPath: string) => {
+  if (!repoManager) return { success: false, error: 'Repo manager not ready' };
+  try {
+    const ok = await repoManager.openRepo(targetPath, { ephemeral: true });
+    if (!ok) return { success: false, error: 'Not a valid worktree path' };
     return { success: true };
   } catch (e) {
     return {

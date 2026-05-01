@@ -11,6 +11,11 @@
   import ErrorDialog from './components/ErrorDialog.svelte';
   import ProgressDialog from './components/ProgressDialog.svelte';
   import CreateBranchDialog from './components/CreateBranchDialog.svelte';
+  import CreateWorktreeDialog from './components/CreateWorktreeDialog.svelte';
+  import RemoveWorktreeDialog from './components/RemoveWorktreeDialog.svelte';
+  import TabBar from './components/TabBar.svelte';
+  import { worktreesStore } from './worktrees-store.svelte';
+  import type { Worktree } from './types';
   import ContextMenu from './components/ContextMenu.svelte';
   import AddTagDialog, {
     type TagAction,
@@ -206,6 +211,8 @@
     shortHash: string;
   } | null>(null);
   let deleteBranchDialog = $state<{ branch: string } | null>(null);
+  let worktreeDialog = $state<{ initialBranch?: string } | null>(null);
+  let removeWorktreeDialog = $state<{ worktree: Worktree } | null>(null);
   let interactiveRebaseDialog = $state<{
     baseHash: string;
     baseShortHash: string;
@@ -418,6 +425,9 @@
       operationInProgress = null;
     }
 
+    // Worktrees — list + dirty status for currently-open tabs.
+    void worktreesStore.refreshList().then(() => worktreesStore.refreshDirty());
+
     // Commits — reset and load first page
     commits = [];
     graphRows = [];
@@ -471,6 +481,11 @@
     await hydrateSettings();
     currentRepoPath = await window.electronAPI.repo.getCurrentPath();
     await loadAllData();
+
+    // Refresh dirty state for open worktree tabs whenever the window
+    // regains focus — cheap, batched, non-blocking.
+    const onFocus = () => void worktreesStore.refreshDirty();
+    window.addEventListener('focus', onFocus);
 
     window.electronAPI.repo.onRepoChanged(async (newPath) => {
       const isRepoSwitch = newPath !== currentRepoPath;
@@ -1380,6 +1395,114 @@
       console.error('Clipboard copy failed:', e);
     }
   }
+
+  // ── Worktree handlers ────────────────────────────────────────
+
+  async function handleSwitchWorktree(targetPath: string) {
+    if (targetPath === currentRepoPath) return;
+    worktreesStore.ensureTab(targetPath);
+    const r = await window.electronAPI.repo.openEphemeral(targetPath);
+    if (r.error) {
+      showError('Switch Failed', `Could not switch worktree.`, r.error);
+      // The worktree may have been removed externally — reconcile.
+      await worktreesStore.refreshList();
+    }
+  }
+
+  function handleCloseWorktreeTab(targetPath: string) {
+    if (targetPath === currentRepoPath) {
+      // Closing the active tab: switch to main first, then drop the tab.
+      const main = worktreesStore.mainWorktree?.path;
+      worktreesStore.closeTab(targetPath);
+      if (main && main !== targetPath) {
+        void handleSwitchWorktree(main);
+      }
+    } else {
+      worktreesStore.closeTab(targetPath);
+    }
+  }
+
+  function handleOpenCreateWorktree(initialBranch?: string) {
+    worktreeDialog = { initialBranch };
+  }
+
+  async function handleCreateWorktreeConfirm(opts: {
+    path: string;
+    base: string;
+    newBranch?: string;
+  }) {
+    worktreeDialog = null;
+    const r = await withProgress('Creating worktree…', () =>
+      window.electronAPI.git.addWorktree(opts),
+    );
+    if (r?.error) {
+      showError(
+        'Create Worktree Failed',
+        'Git refused to create the worktree.',
+        r.error,
+      );
+      return;
+    }
+    await worktreesStore.refreshList();
+    // Auto-open as a new tab and switch to it.
+    worktreesStore.ensureTab(opts.path);
+    await handleSwitchWorktree(opts.path);
+  }
+
+  async function handleLockWorktree(path: string) {
+    const r = await window.electronAPI.git.lockWorktree({ path });
+    if (r?.error) showError('Lock Failed', 'Could not lock worktree.', r.error);
+    await worktreesStore.refreshList();
+  }
+
+  async function handleUnlockWorktree(path: string) {
+    const r = await window.electronAPI.git.unlockWorktree(path);
+    if (r?.error)
+      showError('Unlock Failed', 'Could not unlock worktree.', r.error);
+    await worktreesStore.refreshList();
+  }
+
+  function handleRequestRemoveWorktree(path: string) {
+    const wt = worktreesStore.worktrees.find((w) => w.path === path);
+    if (!wt || wt.isMain) return;
+    // Surface dirty + locked status into the confirm dialog so the user
+    // sees what they're about to lose.
+    const dirty = worktreesStore.dirty[wt.path];
+    removeWorktreeDialog = { worktree: { ...wt, dirty } };
+  }
+
+  async function handleRemoveWorktreeConfirm(force: boolean) {
+    if (!removeWorktreeDialog) return;
+    const path = removeWorktreeDialog.worktree.path;
+    removeWorktreeDialog = null;
+
+    // If the worktree being removed is the active one, switch off it
+    // first; otherwise simple-git can fail because we're sitting in the
+    // directory it's about to delete.
+    if (path === currentRepoPath) {
+      const main = worktreesStore.mainWorktree?.path;
+      if (main && main !== path) {
+        await window.electronAPI.repo.openEphemeral(main);
+      }
+    }
+
+    const r = await withProgress('Removing worktree…', () =>
+      window.electronAPI.git.removeWorktree({ path, force }),
+    );
+    if (r?.error) {
+      showError('Remove Failed', 'Could not remove worktree.', r.error);
+    }
+    worktreesStore.forget(path);
+    await worktreesStore.refreshList();
+  }
+
+  async function handleCopyWorktreePath(path: string) {
+    try {
+      await navigator.clipboard.writeText(path);
+    } catch (e) {
+      console.error('Clipboard copy failed:', e);
+    }
+  }
 </script>
 
 <div class="app-shell">
@@ -1390,6 +1513,18 @@
     aheadCount={sidebarData.branches.find((b) => b.current)?.ahead ?? 0}
     behindCount={sidebarData.branches.find((b) => b.current)?.behind ?? 0}
   />
+
+  {#if worktreesStore.openTabs.length > 1}
+    <TabBar
+      tabs={worktreesStore.openTabs.map((t) => ({
+        ...t,
+        isActive: t.path === currentRepoPath,
+      }))}
+      onSwitchTab={handleSwitchWorktree}
+      onCloseTab={handleCloseWorktreeTab}
+      onCreateTab={() => handleOpenCreateWorktree()}
+    />
+  {/if}
 
   {#if operationInProgress}
     <ConflictBanner
@@ -1417,7 +1552,16 @@
         onRebaseBranch={handleRebaseBranch}
         onDeleteBranch={(name) => (deleteBranchDialog = { branch: name })}
         onNewBranch={() => (branchDialog = {})}
+        onCreateWorktreeFromBranch={handleOpenCreateWorktree}
         onScrollToBranch={handleScrollToBranch}
+        worktrees={worktreesStore.worktrees}
+        currentWorktreePath={currentRepoPath}
+        onOpenWorktree={handleSwitchWorktree}
+        onCreateWorktree={() => handleOpenCreateWorktree()}
+        onLockWorktree={handleLockWorktree}
+        onUnlockWorktree={handleUnlockWorktree}
+        onRemoveWorktree={handleRequestRemoveWorktree}
+        onCopyWorktreePath={handleCopyWorktreePath}
       />
     </div>
 
@@ -1612,6 +1756,25 @@
     initialStartPoint={branchDialog.startPoint}
     onConfirm={handleCreateBranch}
     onCancel={() => (branchDialog = null)}
+  />
+{/if}
+
+{#if worktreeDialog}
+  <CreateWorktreeDialog
+    branches={sidebarData.branches}
+    worktrees={worktreesStore.worktrees}
+    currentRepoPath={currentRepoPath ?? ''}
+    initialBranch={worktreeDialog.initialBranch}
+    onConfirm={handleCreateWorktreeConfirm}
+    onCancel={() => (worktreeDialog = null)}
+  />
+{/if}
+
+{#if removeWorktreeDialog}
+  <RemoveWorktreeDialog
+    worktree={removeWorktreeDialog.worktree}
+    onConfirm={handleRemoveWorktreeConfirm}
+    onCancel={() => (removeWorktreeDialog = null)}
   />
 {/if}
 

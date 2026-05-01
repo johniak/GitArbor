@@ -123,6 +123,18 @@ const api: ElectronAPI = {
         hunkIndex,
         lineIndices,
       }),
+    getWorktrees: () => ipcRenderer.invoke(IPC.GIT_WORKTREE_LIST),
+    addWorktree: (opts: { path: string; base: string; newBranch?: string }) =>
+      ipcRenderer.invoke(IPC.GIT_WORKTREE_ADD, opts),
+    removeWorktree: (opts: { path: string; force?: boolean }) =>
+      ipcRenderer.invoke(IPC.GIT_WORKTREE_REMOVE, opts),
+    lockWorktree: (opts: { path: string; reason?: string }) =>
+      ipcRenderer.invoke(IPC.GIT_WORKTREE_LOCK, opts),
+    unlockWorktree: (worktreePath: string) =>
+      ipcRenderer.invoke(IPC.GIT_WORKTREE_UNLOCK, worktreePath),
+    getWorktreeDirtyStatus: (paths: string[]) =>
+      ipcRenderer.invoke(IPC.GIT_WORKTREE_DIRTY_STATUS, paths),
+    pruneWorktrees: () => ipcRenderer.invoke(IPC.GIT_WORKTREE_PRUNE),
     resetToCommit: (hash: string, mode: 'soft' | 'mixed' | 'hard') =>
       ipcRenderer.invoke(IPC.GIT_RESET, { hash, mode }),
     revertCommit: (hash: string) => ipcRenderer.invoke(IPC.GIT_REVERT, hash),
@@ -183,6 +195,8 @@ const api: ElectronAPI = {
     },
     loadList: () => ipcRenderer.invoke(IPC.REPO_LOAD_LIST),
     open: (path: string) => ipcRenderer.invoke(IPC.REPO_OPEN, path),
+    openEphemeral: (path: string) =>
+      ipcRenderer.invoke(IPC.REPO_OPEN_EPHEMERAL, path),
     removeFromList: (path: string) =>
       ipcRenderer.invoke(IPC.REPO_REMOVE_FROM_LIST, path),
     addExisting: (path: string) =>

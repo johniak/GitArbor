@@ -34,6 +34,7 @@ export interface RepoSettings {
     Tags: boolean;
     Remotes: boolean;
     Stashes: boolean;
+    Worktrees: boolean;
   };
   fileList: {
     working: {
@@ -74,6 +75,7 @@ export const DEFAULT_REPO_SETTINGS: RepoSettings = {
     Tags: true,
     Remotes: true,
     Stashes: true,
+    Worktrees: true,
   },
   fileList: {
     working: {
