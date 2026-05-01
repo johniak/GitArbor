@@ -404,7 +404,7 @@
 
     <!-- Worktrees — flat list with branch + lock icon -->
     <div class="tree-section">
-      <div class="section-header-row">
+      <div class="worktree-section-header">
         <button
           class="section-header"
           onclick={() => toggleSection('Worktrees')}
@@ -639,7 +639,7 @@
     margin-bottom: 8px;
   }
 
-  .section-header-row {
+  .worktree-section-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
