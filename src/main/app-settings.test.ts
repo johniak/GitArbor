@@ -16,7 +16,7 @@ import {
 
 const FILE_NAME = 'app-settings.json';
 
-describe('app-settings (schema v4 + ai)', () => {
+describe('app-settings (schema v5 + ai + diff)', () => {
   let tmpDir: string;
 
   beforeEach(() => {
@@ -33,13 +33,37 @@ describe('app-settings (schema v4 + ai)', () => {
   it('loads defaults including ai.enabled=false and source=local-llm when no file exists', () => {
     const s = loadAppSettings();
     expect(s).toEqual(DEFAULT_APP_SETTINGS);
-    expect(s.schemaVersion).toBe(4);
+    expect(s.schemaVersion).toBe(5);
     expect(s.ai.enabled).toBe(false);
     expect(s.ai.source).toBe('local-llm');
     expect(s.ai.codingAgentTool).toBe('claude');
     expect(s.ai.openAIBaseUrl).toBe('https://api.openai.com');
     expect(s.ai.openAIApiKey).toBe('');
     expect(s.ai.downloadedModels).toEqual({});
+    expect(s.diff.viewMode).toBe('unified');
+    expect(s.diff.syntaxHighlight).toBe(true);
+    expect(s.diff.wordDiff).toBe(true);
+  });
+
+  it('upgrades a v4 file (no diff key) to v5 via deep-merge', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, FILE_NAME),
+      JSON.stringify({
+        schemaVersion: 4,
+        general: { authorName: 'V4 user' },
+        ai: { enabled: true, source: 'local-llm' },
+      }),
+    );
+    _resetAppSettingsState();
+    configureAppSettings(tmpDir);
+
+    const s = loadAppSettings();
+    expect(s.general.authorName).toBe('V4 user');
+    expect(s.ai.enabled).toBe(true);
+    expect(s.diff).toBeDefined();
+    expect(s.diff.viewMode).toBe('unified');
+    expect(s.diff.syntaxHighlight).toBe(true);
+    expect(s.diff.wordDiff).toBe(true);
   });
 
   it('upgrades a v2 file (no ai key) to v4 via deep-merge', () => {
@@ -98,7 +122,7 @@ describe('app-settings (schema v4 + ai)', () => {
     });
     expect(next.general.authorName).toBe('Alice');
     expect(next.ai.selectedModelId).toBe('qwen-2.5-coder-3b-q4');
-    expect(next.schemaVersion).toBe(4);
+    expect(next.schemaVersion).toBe(5);
   });
 
   it('persists openAI source config across updates', () => {

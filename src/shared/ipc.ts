@@ -30,7 +30,11 @@ export type { Worktree } from '../renderer/types';
 export type { DeepPartial } from './deep-merge';
 export type { RepoSettings } from './repo-settings-types';
 export { DEFAULT_REPO_SETTINGS } from './repo-settings-types';
-export type { AppSettings } from './app-settings-types';
+export type {
+  AppSettings,
+  DiffSettings,
+  DiffViewMode,
+} from './app-settings-types';
 export { DEFAULT_APP_SETTINGS } from './app-settings-types';
 export type {
   AIAPI,

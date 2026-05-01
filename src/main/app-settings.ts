@@ -68,7 +68,7 @@ export function updateAppSettings(
   const current = loadAppSettings();
   const merged: AppSettings = {
     ...deepMerge(current, patch),
-    schemaVersion: 4,
+    schemaVersion: 5,
   };
   cache = merged;
   if (pendingTimer) clearTimeout(pendingTimer);

@@ -4,6 +4,7 @@
   import SettingsTabs, { type Tab } from './SettingsTabs.svelte';
   import GeneralPage from './GeneralPage.svelte';
   import AIPage from './AIPage.svelte';
+  import DiffPage from './DiffPage.svelte';
   import { themeStore } from '../theme-store.svelte';
 
   let currentTab = $state<Tab>('general');
@@ -39,6 +40,16 @@
     }
     await window.electronAPI.appSettings.update({ ai: patch });
   }
+
+  async function handleDiffChange(patch: Partial<AppSettings['diff']>) {
+    if (settings) {
+      settings = {
+        ...settings,
+        diff: { ...settings.diff, ...patch },
+      };
+    }
+    await window.electronAPI.appSettings.update({ diff: patch });
+  }
 </script>
 
 <div class="settings">
@@ -50,6 +61,8 @@
         <GeneralPage {settings} onChange={handleGeneralChange} />
       {:else if currentTab === 'ai'}
         <AIPage {settings} onChange={handleAIChange} />
+      {:else if currentTab === 'diff'}
+        <DiffPage {settings} onChange={handleDiffChange} />
       {:else}
         <div class="placeholder">Coming soon…</div>
       {/if}

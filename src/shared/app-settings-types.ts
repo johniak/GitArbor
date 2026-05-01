@@ -3,8 +3,20 @@ import { DEFAULT_AI_SETTINGS, type AISettings } from './ai-types';
 /** UI theme preference. `system` follows the OS via Electron's nativeTheme. */
 export type Appearance = 'system' | 'light' | 'dark';
 
+/** How the diff viewer renders changes. */
+export type DiffViewMode = 'unified' | 'split';
+
+export interface DiffSettings {
+  viewMode: DiffViewMode;
+  /** Apply Shiki syntax highlighting to diff line content. */
+  syntaxHighlight: boolean;
+  /** Highlight per-word differences in modification pairs (`-`/`+` lines
+   *  that align in split view). */
+  wordDiff: boolean;
+}
+
 export interface AppSettings {
-  schemaVersion: 4;
+  schemaVersion: 5;
   general: {
     authorName: string;
     authorEmail: string;
@@ -24,10 +36,11 @@ export interface AppSettings {
     appearance: Appearance;
   };
   ai: AISettings;
+  diff: DiffSettings;
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
-  schemaVersion: 4,
+  schemaVersion: 5,
   general: {
     authorName: '',
     authorEmail: '',
@@ -36,4 +49,9 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     appearance: 'system',
   },
   ai: DEFAULT_AI_SETTINGS,
+  diff: {
+    viewMode: 'unified',
+    syntaxHighlight: true,
+    wordDiff: true,
+  },
 };

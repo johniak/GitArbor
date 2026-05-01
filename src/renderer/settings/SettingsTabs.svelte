@@ -40,7 +40,7 @@
     { id: 'ai', label: 'AI', icon: Sparkles, enabled: true },
     { id: 'accounts', label: 'Accounts', icon: UserCircle, enabled: false },
     { id: 'commit', label: 'Commit', icon: FileText, enabled: false },
-    { id: 'diff', label: 'Diff', icon: SlidersHorizontal, enabled: false },
+    { id: 'diff', label: 'Diff', icon: SlidersHorizontal, enabled: true },
     { id: 'git', label: 'Git', icon: GitBranch, enabled: false },
     {
       id: 'custom-actions',
