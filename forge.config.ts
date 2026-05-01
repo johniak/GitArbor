@@ -67,7 +67,13 @@ const config: ForgeConfig = {
   },
   rebuildConfig: {},
   hooks: {
-    packageAfterCopy: async (_config, buildPath, _electronVersion, platform, arch) => {
+    packageAfterCopy: async (
+      _config,
+      buildPath,
+      _electronVersion,
+      platform,
+      arch,
+    ) => {
       // Copy external JS modules
       const srcModules = path.join(process.cwd(), 'node_modules');
       const destModules = path.join(buildPath, 'node_modules');
@@ -98,11 +104,9 @@ const config: ForgeConfig = {
         fs.mkdirSync(scopeDest, { recursive: true });
         for (const pkg of fs.readdirSync(scopeSrc)) {
           if (!pkg.startsWith(platformPrefix)) continue;
-          fs.cpSync(
-            path.join(scopeSrc, pkg),
-            path.join(scopeDest, pkg),
-            { recursive: true },
-          );
+          fs.cpSync(path.join(scopeSrc, pkg), path.join(scopeDest, pkg), {
+            recursive: true,
+          });
         }
       }
 
