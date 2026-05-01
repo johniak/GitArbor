@@ -239,7 +239,7 @@ GitArbor feature matrix. `[x]` = done, `[ ]` = planned / missing, `[~]` = partia
 - [ ] Submodules (add / init / update / deinit / sync / remove, recursive)
 - [ ] Subtrees (add / pull / push / split / merge, squash option)
 - [ ] Git LFS (init / track / status / push-hook)
-- [ ] Worktrees (add / list / remove)
+- [x] Worktrees — sidebar section + tab bar (1 tab = no chrome; 2+ shows tabs); double-click to open as tab; right-click → Lock / Unlock / Copy path / Remove (force-checkbox gate when dirty / locked); auto-open new tab on Create; "Create worktree from <branch>" in branch context menu; ephemeral repo open so worktree paths don't pollute Recent Repositories
 - [ ] Sparse checkout
 - [ ] Shallow clone
 - [ ] Rewrite author on a range (filter-branch / filter-repo)
@@ -314,9 +314,28 @@ GitArbor feature matrix. `[x]` = done, `[ ]` = planned / missing, `[~]` = partia
 - [ ] Code signing (macOS notarization, Windows Authenticode)
 - [ ] Telemetry / analytics (opt-in)
 
-## 17. Developer tooling
+## 17. AI
 
-- [x] Unit tests (Vitest, 131 passing)
+- [x] AI source picker in Settings: Local LLM / Coding Agent / OpenAI-compatible (single global active source for all AI features)
+- [x] Local LLM via `node-llama-cpp` — auto GPU detection (Metal / CUDA / Vulkan / CPU fallback), curated model list (Qwen 2.5 Coder 1.5B / 3B, Qwen 3.5 0.8B, DeepSeek Coder 1.3B, Gemma 2 2B, Llama 3.2 3B, Phi 3.5-mini), Custom GGUF URL with magic-byte validation, inline determinate download progress with cancel
+- [x] "Keep model loaded" toggle (pin in memory all session vs lazy-load on commit/branch view entry, 5-min idle eviction)
+- [x] Coding Agent provider — spawns local `claude` (Claude Code) or `codex` (Codex CLI) subprocess in repo cwd; parses stream-json / `--json` deltas; SIGTERM → SIGKILL on cancel
+- [x] OpenAI-compatible provider — native fetch + SSE against `/v1/chat/completions`; works with OpenAI, OpenRouter, Groq, Together, vLLM, LM Studio, Ollama (compat mode); base URL + model + API key
+- [x] Source readiness probe (`✓ Ready` / `✗ <reason>` per source) gating Generate buttons
+- [x] Generate branch name (Create Branch dialog) — context: recent commit subjects + current branch + start-point + working-tree summary with sample diff
+- [x] Generate commit message (Commit Panel) — context: full staged diff (truncated to ~12 KB across files, ~4 KB per file, head/tail-elided hunks, binary/lockfile deny-list) + last 5 commit subjects for style mimicry
+- [x] Streaming token render with race-free renderer-generated requestId
+- [x] Cancel mid-stream + "Thinking…" indicator until first token
+- [ ] Per-feature source picker (different source for branch name vs commit message)
+- [ ] Custom HTTP headers / organization id for OpenAI-compatible
+- [ ] Persistence of open worktree tabs across sessions
+- [ ] Test connection button for OpenAI-compatible endpoints
+- [ ] Explain diff / explain commit
+- [ ] Generate PR description
+
+## 18. Developer tooling
+
+- [x] Unit tests (Vitest, 279 passing)
 - [x] E2E tests (Playwright + Electron, 134 passing)
 - [x] Typecheck (`tsc --noEmit`)
 - [x] Lint (ESLint + eslint-plugin-svelte)
