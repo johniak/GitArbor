@@ -49,9 +49,16 @@ The format is based on [Keep a Changelog 1.1](https://keepachangelog.com/en/1.1.
 - "Create worktree from `<branch>`…" entry in the branch context menu.
 - Ephemeral repo-open path so worktree tab switches don't pollute Recent Repositories.
 
+## [0.7.0] - 2026-04-29
+
+### Added
+
+- File log + annotate dialogs — per-file commit history (`git log --follow <path>`) and per-line blame view, both reachable from file context menus.
+
 [Unreleased]: https://github.com/johniak/gitarbor/compare/v0.8.4...HEAD
 [0.8.4]: https://github.com/johniak/gitarbor/releases/tag/v0.8.4
 [0.8.3]: https://github.com/johniak/gitarbor/releases/tag/v0.8.3
 [0.8.2]: https://github.com/johniak/gitarbor/releases/tag/v0.8.2
 [0.8.1]: https://github.com/johniak/gitarbor/releases/tag/v0.8.1
 [0.8.0]: https://github.com/johniak/gitarbor/releases/tag/v0.8.0
+[0.7.0]: https://github.com/johniak/gitarbor/releases/tag/v0.7.0
