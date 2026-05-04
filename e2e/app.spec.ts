@@ -780,11 +780,8 @@ test.describe('Git Operations', () => {
     await expect(btn).toBeVisible({ timeout: 10_000 });
   });
 
-  test('Pull works without error', async ({ window }) => {
-    const btn = window.locator('.toolbar-btn', { hasText: 'Pull' });
-    await btn.click();
-    await expect(btn).toBeVisible({ timeout: 10_000 });
-  });
+  // Pull is covered in detail by the "Pull Dialog" describe block below —
+  // the toolbar button now opens a dialog instead of pulling immediately.
 });
 
 test.describe('Working Changes', () => {
@@ -1792,6 +1789,224 @@ test.describe('Push Dialog', () => {
     await expect(window.locator('.push-badge')).toHaveCount(0, {
       timeout: 10_000,
     });
+  });
+});
+
+test.describe('Pull Dialog', () => {
+  /** Reset persistent pull defaults so each test starts from a known baseline.
+   *  appSettings live in the shared Electron userData dir, so without this
+   *  reset a previous test's confirm could leak into the next one. */
+  async function resetPullDefaults(window: import('playwright').Page) {
+    await window.evaluate(async () => {
+      await window.electronAPI.appSettings.update({
+        pull: { rebase: false, noCommit: false, noFf: false, log: false },
+      });
+    });
+  }
+
+  async function openPullDialog(window: import('playwright').Page) {
+    // Same readiness gate as the push dialog helper — wait for fixture
+    // commits to appear so the sidebar has real branches/remotes before
+    // the dialog snapshots them as props.
+    await expect(
+      window.locator('.commit-row', { hasText: 'local only commit' }).first(),
+    ).toBeVisible({ timeout: 20_000 });
+    await resetPullDefaults(window);
+    await window.locator('.toolbar-btn', { hasText: 'Pull' }).click();
+    await expect(window.locator('[data-testid="pull-remote"]')).toBeVisible({
+      timeout: 5_000,
+    });
+  }
+
+  test('toolbar Pull button opens dialog', async ({ window }) => {
+    await openPullDialog(window);
+    await expect(window.locator('[data-testid="pull-branch"]')).toBeVisible();
+    await expect(window.locator('[data-testid="pull-confirm"]')).toBeVisible();
+  });
+
+  test('escape closes pull dialog', async ({ window }) => {
+    await openPullDialog(window);
+    await window.keyboard.press('Escape');
+    await expect(
+      window.locator('[data-testid="pull-remote"]'),
+    ).not.toBeVisible();
+  });
+
+  test('cancel closes pull dialog without pulling', async ({ window }) => {
+    await openPullDialog(window);
+    await window.locator('.btn-cancel').click();
+    await expect(
+      window.locator('[data-testid="pull-remote"]'),
+    ).not.toBeVisible();
+  });
+
+  test('remote dropdown contains origin and URL is populated', async ({
+    window,
+  }) => {
+    await openPullDialog(window);
+    await expect(
+      window.locator('[data-testid="pull-remote"] option', {
+        hasText: 'origin',
+      }),
+    ).toHaveCount(1);
+    const url = await window.locator('.url').inputValue();
+    expect(url.length).toBeGreaterThan(0);
+  });
+
+  test('branch dropdown is populated with remote branches', async ({
+    window,
+  }) => {
+    await openPullDialog(window);
+    // Fixture pushes main, feature/auth, develop, feature/merge-test,
+    // feature/rebase-test to origin — all should appear.
+    const branchOptions = window.locator('[data-testid="pull-branch"] option');
+    const count = await branchOptions.count();
+    expect(count).toBeGreaterThanOrEqual(2);
+    await expect(
+      window.locator('[data-testid="pull-branch"] option', { hasText: 'main' }),
+    ).toHaveCount(1);
+  });
+
+  test('local branch row shows current branch name', async ({ window }) => {
+    await openPullDialog(window);
+    await expect(window.locator('.local-branch')).toHaveText('main');
+  });
+
+  test('default flags: commit checked, others unchecked', async ({
+    window,
+  }) => {
+    await openPullDialog(window);
+    await expect(window.locator('[data-testid="pull-commit"]')).toBeChecked();
+    await expect(window.locator('[data-testid="pull-log"]')).not.toBeChecked();
+    await expect(
+      window.locator('[data-testid="pull-no-ff"]'),
+    ).not.toBeChecked();
+    await expect(
+      window.locator('[data-testid="pull-rebase"]'),
+    ).not.toBeChecked();
+  });
+
+  test('rebase checkbox disables merge-only flags', async ({ window }) => {
+    await openPullDialog(window);
+    const rebase = window.locator('[data-testid="pull-rebase"]');
+    const commit = window.locator('[data-testid="pull-commit"]');
+    const log = window.locator('[data-testid="pull-log"]');
+    const noFf = window.locator('[data-testid="pull-no-ff"]');
+
+    // Sanity: merge-only flags enabled before rebase is on
+    await expect(commit).toBeEnabled();
+    await expect(log).toBeEnabled();
+    await expect(noFf).toBeEnabled();
+
+    await rebase.check();
+
+    await expect(commit).toBeDisabled();
+    await expect(log).toBeDisabled();
+    await expect(noFf).toBeDisabled();
+
+    // Toggling rebase off restores them
+    await rebase.uncheck();
+    await expect(commit).toBeEnabled();
+    await expect(log).toBeEnabled();
+    await expect(noFf).toBeEnabled();
+  });
+
+  test('refresh button is visible and clickable', async ({ window }) => {
+    await openPullDialog(window);
+    const refresh = window.locator('button.refresh', { hasText: 'Refresh' });
+    await expect(refresh).toBeEnabled();
+    await refresh.click();
+    // Dialog must stay open after refresh — fetch only updates branch list
+    await expect(window.locator('[data-testid="pull-remote"]')).toBeVisible();
+  });
+
+  test('OK submits and closes dialog without error', async ({ window }) => {
+    await openPullDialog(window);
+    await window.locator('[data-testid="pull-confirm"]').click();
+    await expect(window.locator('[data-testid="pull-remote"]')).not.toBeVisible(
+      { timeout: 10_000 },
+    );
+    // App stays alive after pull
+    await expect(
+      window.locator('.toolbar-btn', { hasText: 'Pull' }),
+    ).toBeVisible();
+  });
+
+  test('confirming with rebase persists to appSettings.pull', async ({
+    window,
+  }) => {
+    await openPullDialog(window);
+    await window.locator('[data-testid="pull-rebase"]').check();
+    await window.locator('[data-testid="pull-confirm"]').click();
+    await expect(window.locator('[data-testid="pull-remote"]')).not.toBeVisible(
+      { timeout: 10_000 },
+    );
+    await expect
+      .poll(
+        () =>
+          window.evaluate(async () => {
+            const s = await window.electronAPI.appSettings.get();
+            return s.pull;
+          }),
+        { timeout: 5_000 },
+      )
+      .toEqual({ rebase: true, noCommit: false, noFf: false, log: false });
+  });
+
+  test('confirming with noFf + log + noCommit persists each flag', async ({
+    window,
+  }) => {
+    await openPullDialog(window);
+    // commit is checked by default → uncheck to set noCommit=true
+    await window.locator('[data-testid="pull-commit"]').uncheck();
+    await window.locator('[data-testid="pull-log"]').check();
+    await window.locator('[data-testid="pull-no-ff"]').check();
+    await window.locator('[data-testid="pull-confirm"]').click();
+    await expect(window.locator('[data-testid="pull-remote"]')).not.toBeVisible(
+      { timeout: 10_000 },
+    );
+    await expect
+      .poll(
+        () =>
+          window.evaluate(async () => {
+            const s = await window.electronAPI.appSettings.get();
+            return s.pull;
+          }),
+        { timeout: 5_000 },
+      )
+      .toEqual({ rebase: false, noCommit: true, noFf: true, log: true });
+  });
+
+  test('persisted flags pre-populate the dialog on next open', async ({
+    window,
+  }) => {
+    // Seed appSettings.pull then open the dialog and verify it reflects them
+    await expect(
+      window.locator('.commit-row', { hasText: 'local only commit' }).first(),
+    ).toBeVisible({ timeout: 20_000 });
+    await window.evaluate(async () => {
+      await window.electronAPI.appSettings.update({
+        pull: { rebase: true, noCommit: true, noFf: true, log: true },
+      });
+    });
+    await window.locator('.toolbar-btn', { hasText: 'Pull' }).click();
+    await expect(window.locator('[data-testid="pull-remote"]')).toBeVisible({
+      timeout: 5_000,
+    });
+
+    await expect(window.locator('[data-testid="pull-rebase"]')).toBeChecked();
+    // commit checkbox is the inverse of noCommit — noCommit=true → unchecked
+    await expect(
+      window.locator('[data-testid="pull-commit"]'),
+    ).not.toBeChecked();
+    // rebase=true disables the merge-only flags, so checked-state of log/no-ff
+    // reflects what they'd be when re-enabled
+    await expect(window.locator('[data-testid="pull-log"]')).toBeChecked();
+    await expect(window.locator('[data-testid="pull-no-ff"]')).toBeChecked();
+
+    // Restore defaults so other tests start clean
+    await window.keyboard.press('Escape');
+    await resetPullDefaults(window);
   });
 });
 
