@@ -801,12 +801,61 @@ describe('GitService', () => {
   });
 
   describe('pull / fetch / stash', () => {
-    it('pull calls git.pull()', async () => {
-      const pullFn = vi.fn().mockResolvedValue(undefined);
-      const mockGit = createMockGit({ pull: pullFn });
+    it('pull with no opts runs `git pull` with no extra args', async () => {
+      const rawFn = vi.fn().mockResolvedValue('');
+      const mockGit = createMockGit({ raw: rawFn });
       const service = new GitService(mockGit);
       await service.pull();
-      expect(pullFn).toHaveBeenCalled();
+      expect(rawFn).toHaveBeenCalledWith(['pull']);
+    });
+
+    it('pull --rebase passes --rebase and ignores merge-only flags', async () => {
+      const rawFn = vi.fn().mockResolvedValue('');
+      const mockGit = createMockGit({ raw: rawFn });
+      const service = new GitService(mockGit);
+      await service.pull({
+        rebase: true,
+        noCommit: true,
+        noFf: true,
+        log: true,
+        remote: 'origin',
+        branch: 'main',
+      });
+      expect(rawFn).toHaveBeenCalledWith([
+        'pull',
+        '--rebase',
+        'origin',
+        'main',
+      ]);
+    });
+
+    it('pull merge mode composes --no-commit / --no-ff / --log', async () => {
+      const rawFn = vi.fn().mockResolvedValue('');
+      const mockGit = createMockGit({ raw: rawFn });
+      const service = new GitService(mockGit);
+      await service.pull({
+        noCommit: true,
+        noFf: true,
+        log: true,
+        remote: 'origin',
+        branch: 'feature',
+      });
+      expect(rawFn).toHaveBeenCalledWith([
+        'pull',
+        '--no-commit',
+        '--no-ff',
+        '--log',
+        'origin',
+        'feature',
+      ]);
+    });
+
+    it('pull omits remote/branch when not provided', async () => {
+      const rawFn = vi.fn().mockResolvedValue('');
+      const mockGit = createMockGit({ raw: rawFn });
+      const service = new GitService(mockGit);
+      await service.pull({ noFf: true });
+      expect(rawFn).toHaveBeenCalledWith(['pull', '--no-ff']);
     });
 
     it('fetch calls git.fetch(--all)', async () => {

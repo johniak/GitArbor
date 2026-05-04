@@ -16,7 +16,7 @@ import {
 
 const FILE_NAME = 'app-settings.json';
 
-describe('app-settings (schema v5 + ai + diff)', () => {
+describe('app-settings (schema v6 + ai + diff + pull)', () => {
   let tmpDir: string;
 
   beforeEach(() => {
@@ -33,7 +33,7 @@ describe('app-settings (schema v5 + ai + diff)', () => {
   it('loads defaults including ai.enabled=false and source=local-llm when no file exists', () => {
     const s = loadAppSettings();
     expect(s).toEqual(DEFAULT_APP_SETTINGS);
-    expect(s.schemaVersion).toBe(5);
+    expect(s.schemaVersion).toBe(6);
     expect(s.ai.enabled).toBe(false);
     expect(s.ai.source).toBe('local-llm');
     expect(s.ai.codingAgentTool).toBe('claude');
@@ -43,6 +43,32 @@ describe('app-settings (schema v5 + ai + diff)', () => {
     expect(s.diff.viewMode).toBe('unified');
     expect(s.diff.syntaxHighlight).toBe(true);
     expect(s.diff.wordDiff).toBe(true);
+    expect(s.pull.rebase).toBe(false);
+    expect(s.pull.noCommit).toBe(false);
+    expect(s.pull.noFf).toBe(false);
+    expect(s.pull.log).toBe(false);
+  });
+
+  it('upgrades a v5 file (no pull key) to v6 via deep-merge', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, FILE_NAME),
+      JSON.stringify({
+        schemaVersion: 5,
+        general: { authorName: 'V5 user' },
+        diff: { viewMode: 'split', syntaxHighlight: true, wordDiff: true },
+      }),
+    );
+    _resetAppSettingsState();
+    configureAppSettings(tmpDir);
+
+    const s = loadAppSettings();
+    expect(s.general.authorName).toBe('V5 user');
+    expect(s.diff.viewMode).toBe('split');
+    expect(s.pull).toBeDefined();
+    expect(s.pull.rebase).toBe(false);
+    expect(s.pull.noCommit).toBe(false);
+    expect(s.pull.noFf).toBe(false);
+    expect(s.pull.log).toBe(false);
   });
 
   it('upgrades a v4 file (no diff key) to v5 via deep-merge', () => {
@@ -122,7 +148,7 @@ describe('app-settings (schema v5 + ai + diff)', () => {
     });
     expect(next.general.authorName).toBe('Alice');
     expect(next.ai.selectedModelId).toBe('qwen-2.5-coder-3b-q4');
-    expect(next.schemaVersion).toBe(5);
+    expect(next.schemaVersion).toBe(6);
   });
 
   it('persists openAI source config across updates', () => {

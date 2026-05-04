@@ -17,6 +17,7 @@ import type {
   Worktree,
 } from '../renderer/types';
 import { parseWorktreePorcelain } from './worktree-parser';
+import type { PullOptions } from '../shared/ipc';
 import { relativeDate } from '../shared/date-utils';
 import { parseBlamePorcelain, type BlameLine } from '../shared/blame-parser';
 
@@ -610,8 +611,22 @@ export class GitService {
     await this.git.raw(args);
   }
 
-  async pull(): Promise<void> {
-    await this.git.pull();
+  async pull(opts: PullOptions = {}): Promise<void> {
+    const args: string[] = ['pull'];
+    if (opts.rebase) {
+      // --rebase replaces the merge entirely; --no-ff / --log / --no-commit
+      // are merge-only and don't compose with rebase.
+      args.push('--rebase');
+    } else {
+      if (opts.noCommit) args.push('--no-commit');
+      if (opts.noFf) args.push('--no-ff');
+      if (opts.log) args.push('--log');
+    }
+    if (opts.remote) {
+      args.push(opts.remote);
+      if (opts.branch) args.push(opts.branch);
+    }
+    await this.git.raw(args);
   }
 
   async push(): Promise<void> {

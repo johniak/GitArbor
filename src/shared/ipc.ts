@@ -34,7 +34,18 @@ export type {
   AppSettings,
   DiffSettings,
   DiffViewMode,
+  PullSettings,
 } from './app-settings-types';
+
+/** Options for `git pull`, threaded from the renderer dialog through IPC. */
+export interface PullOptions {
+  remote?: string;
+  branch?: string;
+  rebase?: boolean;
+  noCommit?: boolean;
+  noFf?: boolean;
+  log?: boolean;
+}
 export { DEFAULT_APP_SETTINGS } from './app-settings-types';
 export type {
   AIAPI,
@@ -224,7 +235,7 @@ export interface GitAPI {
       exclude?: string[];
     },
   ): Promise<void>;
-  pull(): Promise<void>;
+  pull(opts?: PullOptions): Promise<void>;
   push(): Promise<void>;
   pushBranches(
     remote: string,

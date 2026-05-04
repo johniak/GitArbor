@@ -15,8 +15,24 @@ export interface DiffSettings {
   wordDiff: boolean;
 }
 
+/** Persistent defaults for the Pull dialog. The user can override per-pull
+ *  in the dialog itself; whatever they confirm is written back here. */
+export interface PullSettings {
+  /** `git pull --rebase` instead of merge. Mutually exclusive with `noFf`
+   *  and `log` (those are merge-only flags). */
+  rebase: boolean;
+  /** `--no-commit` — fetch + merge but leave the user to confirm. */
+  noCommit: boolean;
+  /** `--no-ff` — always create a merge commit even when fast-forward is
+   *  possible. */
+  noFf: boolean;
+  /** `--log` — populate the merge commit message with shortlogs of the
+   *  commits being merged in. */
+  log: boolean;
+}
+
 export interface AppSettings {
-  schemaVersion: 5;
+  schemaVersion: 6;
   general: {
     authorName: string;
     authorEmail: string;
@@ -37,10 +53,11 @@ export interface AppSettings {
   };
   ai: AISettings;
   diff: DiffSettings;
+  pull: PullSettings;
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
-  schemaVersion: 5,
+  schemaVersion: 6,
   general: {
     authorName: '',
     authorEmail: '',
@@ -53,5 +70,11 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     viewMode: 'unified',
     syntaxHighlight: true,
     wordDiff: true,
+  },
+  pull: {
+    rebase: false,
+    noCommit: false,
+    noFf: false,
+    log: false,
   },
 };

@@ -44,7 +44,8 @@ const api: ElectronAPI = {
         exclude?: string[];
       },
     ) => ipcRenderer.invoke(IPC.GIT_COMMIT, { message, ...(opts ?? {}) }),
-    pull: () => ipcRenderer.invoke(IPC.GIT_PULL),
+    pull: (opts?: import('../shared/ipc').PullOptions) =>
+      ipcRenderer.invoke(IPC.GIT_PULL, opts),
     push: () => ipcRenderer.invoke(IPC.GIT_PUSH),
     pushBranches: (
       remote: string,

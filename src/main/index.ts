@@ -288,7 +288,11 @@ ipcMain.handle(
     }
   },
 );
-ipcMain.handle(IPC.GIT_PULL, () => getGitService().pull());
+ipcMain.handle(
+  IPC.GIT_PULL,
+  (_event, opts?: import('../shared/ipc').PullOptions) =>
+    getGitService().pull(opts),
+);
 ipcMain.handle(IPC.GIT_PUSH, () => getGitService().push());
 ipcMain.handle(
   IPC.GIT_PUSH_BRANCHES,

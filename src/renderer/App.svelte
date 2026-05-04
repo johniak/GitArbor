@@ -11,6 +11,7 @@
   import ErrorDialog from './components/ErrorDialog.svelte';
   import ProgressDialog from './components/ProgressDialog.svelte';
   import CreateBranchDialog from './components/CreateBranchDialog.svelte';
+  import PullDialog from './components/PullDialog.svelte';
   import CreateWorktreeDialog from './components/CreateWorktreeDialog.svelte';
   import RemoveWorktreeDialog from './components/RemoveWorktreeDialog.svelte';
   import TabBar from './components/TabBar.svelte';
@@ -38,7 +39,11 @@
     RunInteractiveRebaseResult,
   } from '../shared/rebase-types';
   import SearchView from './components/SearchView.svelte';
-  import type { OperationInProgress } from '../shared/ipc';
+  import type {
+    OperationInProgress,
+    AppSettings,
+    PullOptions,
+  } from '../shared/ipc';
   import { mockSidebar, mockCommits, mockFiles, mockDiff } from './mock-data';
   import type {
     ChangedFile,
@@ -189,6 +194,8 @@
 
   let showStashDialog = $state(false);
   let branchDialog = $state<{ startPoint?: string } | null>(null);
+  let pullDialog = $state<object | null>(null);
+  let appSettings = $state<AppSettings | null>(null);
   let showPushDialog = $state(false);
   let resetDialog = $state<{
     hash: string;
@@ -478,6 +485,16 @@
   onMount(async () => {
     void themeStore.hydrate();
     void aiStore.hydrate();
+    try {
+      appSettings = await window.electronAPI.appSettings.get();
+    } catch (e) {
+      console.error('[app] appSettings.get failed', e);
+    }
+    // Subscription lives for the App's lifetime — the renderer process
+    // is torn down with the window. No explicit cleanup needed.
+    window.electronAPI.appSettings.onChanged((s) => {
+      appSettings = s;
+    });
     await hydrateSettings();
     currentRepoPath = await window.electronAPI.repo.getCurrentPath();
     await loadAllData();
@@ -535,8 +552,10 @@
     try {
       switch (action) {
         case 'pull':
-          await withProgress('Pulling...', () => window.electronAPI.git.pull());
-          break;
+          // Open the dialog instead of pulling immediately. The dialog's
+          // onConfirm callback runs the actual pull (with options).
+          pullDialog = {};
+          return;
         case 'push':
           showPushDialog = true;
           return;
@@ -800,6 +819,28 @@
       workingStatus = await window.electronAPI.git.getWorkingStatus();
     } catch (e) {
       console.error('Unstage all failed:', e);
+    }
+  }
+
+  async function handlePullConfirm(opts: PullOptions) {
+    pullDialog = null;
+    // Persist the chosen flags so the dialog reopens with the same
+    // selections next time. `remote` / `branch` are NOT persisted —
+    // they're per-pull, not preferences.
+    void window.electronAPI.appSettings.update({
+      pull: {
+        rebase: opts.rebase ?? false,
+        noCommit: opts.noCommit ?? false,
+        noFf: opts.noFf ?? false,
+        log: opts.log ?? false,
+      },
+    });
+    try {
+      await withProgress('Pulling...', () => window.electronAPI.git.pull(opts));
+      await loadAllData();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      showError('Pull Failed', 'Could not pull.', msg);
     }
   }
 
@@ -1756,6 +1797,17 @@
     initialStartPoint={branchDialog.startPoint}
     onConfirm={handleCreateBranch}
     onCancel={() => (branchDialog = null)}
+  />
+{/if}
+
+{#if pullDialog && appSettings}
+  <PullDialog
+    currentBranch={sidebarData.branches.find((b) => b.current)?.name ?? null}
+    branches={sidebarData.branches}
+    remotes={sidebarData.remotes}
+    defaults={appSettings.pull}
+    onConfirm={handlePullConfirm}
+    onCancel={() => (pullDialog = null)}
   />
 {/if}
 
