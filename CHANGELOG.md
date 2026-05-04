@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog 1.1](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-05-04
+
+### Fixed
+
+- Packaged builds (deb / rpm / dmg / zip) crashed on first import with `ERR_MODULE_NOT_FOUND` for `lifecycle-utils` (and would have failed for ~20 more transitives like `@huggingface/jinja`, `async-retry`, `cmake-js`, `ipull`, `ora`, `semver`, `yargs`). The Forge `packageAfterCopy` hook copied only the top-level externals named in `EXTERNAL_MODULES`, missing every transitive that resolves through Bun's hoisted top-level `node_modules`. Replaced the shallow copy with a recursive walker that mirrors Node's resolution (nested `node_modules` first, then project root) and follows `dependencies` only — `optionalDependencies` stay excluded so the per-platform `@node-llama-cpp/<platform>` binaries still ship one OS at a time.
+
+## [0.10.0] - 2026-05-04
+
+### Added
+
+- Sourcetree-style Pull dialog: remote dropdown + read-only URL, remote-branch dropdown with a Refresh button (runs `git fetch`), local branch row, and four mutually-aware option checkboxes — Commit merged changes immediately (`--no-commit` when off), Include messages from commits being merged in merge commit (`--log`), Create new commit even if fast-forward merge (`--no-ff`), Rebase instead of merge (`--rebase`, disables the merge-only flags). Defaults persist in `AppSettings.pull` (schema 5 → 6, deep-merge upgrade). 13 e2e tests added.
+
 ## [0.9.0] - 2026-05-01
 
 ### Added
@@ -35,7 +47,9 @@ The format is based on [Keep a Changelog 1.1](https://keepachangelog.com/en/1.1.
 
 - File log + annotate dialogs — per-file commit history (`git log --follow <path>`) and per-line blame view, both reachable from file context menus.
 
-[Unreleased]: https://github.com/johniak/gitarbor/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/johniak/gitarbor/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/johniak/gitarbor/releases/tag/v0.10.1
+[0.10.0]: https://github.com/johniak/gitarbor/releases/tag/v0.10.0
 [0.9.0]: https://github.com/johniak/gitarbor/releases/tag/v0.9.0
 [0.8.4]: https://github.com/johniak/gitarbor/releases/tag/v0.8.4
 [0.7.0]: https://github.com/johniak/gitarbor/releases/tag/v0.7.0
