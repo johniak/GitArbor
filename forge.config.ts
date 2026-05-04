@@ -19,6 +19,60 @@ const EXTERNAL_MODULES = ['sql.js', 'node-llama-cpp'];
 // node-llama-cpp dlopen's `.node` binaries from these packages at runtime.
 const NODE_LLAMA_CPP_BINARY_SCOPE = '@node-llama-cpp';
 
+/** Walk Node's module-resolution algorithm: look for `node_modules/<name>`
+ *  starting at `fromDir` and walking up, then fall back to the project root.
+ *  Returns the absolute path of the installed package (with package.json) or
+ *  null if it isn't installed (which is fine for optionalDependencies). */
+function findInstalledPath(
+  modName: string,
+  fromDir: string,
+  srcRoot: string,
+): string | null {
+  let dir = fromDir;
+  while (dir.startsWith(srcRoot)) {
+    const candidate = path.join(dir, 'node_modules', modName);
+    if (fs.existsSync(path.join(candidate, 'package.json'))) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  const top = path.join(srcRoot, 'node_modules', modName);
+  if (fs.existsSync(path.join(top, 'package.json'))) return top;
+  return null;
+}
+
+/** Copy a package and walk its `dependencies` recursively, mirroring the
+ *  flat install layout under `destRoot`. Wholesale copy preserves any
+ *  nested `node_modules` (so version-pinned transitives keep working).
+ *  `optionalDependencies` are skipped — node-llama-cpp's platform binaries
+ *  are listed there and are handled separately so we don't ship every OS. */
+function copyModuleAndDeps(
+  modName: string,
+  fromDir: string,
+  ctx: { srcRoot: string; destRoot: string; copied: Set<string> },
+): void {
+  const installed = findInstalledPath(modName, fromDir, ctx.srcRoot);
+  if (!installed || ctx.copied.has(installed)) return;
+  ctx.copied.add(installed);
+
+  const rel = path.relative(ctx.srcRoot, installed);
+  const dest = path.join(ctx.destRoot, rel);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.cpSync(installed, dest, { recursive: true });
+
+  let pkg: { dependencies?: Record<string, string> };
+  try {
+    pkg = JSON.parse(
+      fs.readFileSync(path.join(installed, 'package.json'), 'utf-8'),
+    ) as { dependencies?: Record<string, string> };
+  } catch {
+    return;
+  }
+  for (const dep of Object.keys(pkg.dependencies ?? {})) {
+    copyModuleAndDeps(dep, installed, ctx);
+  }
+}
+
 const plugins: ForgeConfig['plugins'] = [
   new AutoUnpackNativesPlugin({}),
   new VitePlugin({
@@ -74,15 +128,19 @@ const config: ForgeConfig = {
       platform,
       arch,
     ) => {
-      // Copy external JS modules
-      const srcModules = path.join(process.cwd(), 'node_modules');
-      const destModules = path.join(buildPath, 'node_modules');
+      // Copy external JS modules + their full transitive `dependencies`
+      // graph. The earlier shallow copy missed top-level transitives like
+      // `lifecycle-utils`, `@huggingface/jinja`, `cmake-js`, etc. which
+      // node-llama-cpp imports at runtime, breaking packaged builds with
+      // ERR_MODULE_NOT_FOUND.
+      const srcRoot = process.cwd();
+      const ctx = {
+        srcRoot,
+        destRoot: buildPath,
+        copied: new Set<string>(),
+      };
       for (const mod of EXTERNAL_MODULES) {
-        const src = path.join(srcModules, mod);
-        const dest = path.join(destModules, mod);
-        if (fs.existsSync(src)) {
-          fs.cpSync(src, dest, { recursive: true });
-        }
+        copyModuleAndDeps(mod, srcRoot, ctx);
       }
 
       // Only copy the `@node-llama-cpp/<platform>-<arch>-*` packages that
@@ -98,8 +156,16 @@ const config: ForgeConfig = {
               ? `win-${arch}`
               : null;
 
-      const scopeSrc = path.join(srcModules, NODE_LLAMA_CPP_BINARY_SCOPE);
-      const scopeDest = path.join(destModules, NODE_LLAMA_CPP_BINARY_SCOPE);
+      const scopeSrc = path.join(
+        srcRoot,
+        'node_modules',
+        NODE_LLAMA_CPP_BINARY_SCOPE,
+      );
+      const scopeDest = path.join(
+        buildPath,
+        'node_modules',
+        NODE_LLAMA_CPP_BINARY_SCOPE,
+      );
       if (platformPrefix && fs.existsSync(scopeSrc)) {
         fs.mkdirSync(scopeDest, { recursive: true });
         for (const pkg of fs.readdirSync(scopeSrc)) {
