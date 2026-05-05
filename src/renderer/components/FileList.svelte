@@ -465,7 +465,7 @@
           </button>
         </div>
         {#if stagedExpanded}
-          {@render body(stagedSorted, true, false)}
+          {@render body(stagedSorted, true, true)}
         {/if}
         <!-- Unstaged section -->
         <div class="section-header-row">
@@ -489,7 +489,7 @@
           </button>
         </div>
         {#if unstagedExpanded}
-          {@render body(unstagedSorted, false, false)}
+          {@render body(unstagedSorted, false, true)}
         {/if}
       {:else if stagingMode === 'fluid'}
         {@render body(combinedSorted, false, true)}

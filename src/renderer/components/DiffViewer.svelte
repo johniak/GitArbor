@@ -676,6 +676,7 @@
     width: 16px;
     flex-shrink: 0;
     color: var(--color-diff-added);
+    user-select: none;
   }
 
   .line-removed .line-prefix {
