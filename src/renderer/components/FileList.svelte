@@ -449,6 +449,7 @@
             class="stage-all-checkbox"
             checked
             onclick={(e: MouseEvent) => {
+              e.preventDefault();
               e.stopPropagation();
               onUnstageAll?.();
             }}
@@ -472,7 +473,9 @@
           <input
             type="checkbox"
             class="stage-all-checkbox"
+            checked={false}
             onclick={(e: MouseEvent) => {
+              e.preventDefault();
               e.stopPropagation();
               onStageAll?.();
             }}
