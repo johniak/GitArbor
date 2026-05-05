@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog 1.1](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-05-05
+
+### Fixed
+
+- Section header checkboxes in the working file list (Staged / Unstaged) no longer flip visual state on click — the staged-section box stays checked, the unstaged-section box stays unchecked. Click action is unchanged: staged box still unstages all, unstaged box still stages all.
+
 ## [0.10.2] - 2026-05-05
 
 ### Fixed
@@ -57,7 +63,8 @@ The format is based on [Keep a Changelog 1.1](https://keepachangelog.com/en/1.1.
 
 - File log + annotate dialogs — per-file commit history (`git log --follow <path>`) and per-line blame view, both reachable from file context menus.
 
-[Unreleased]: https://github.com/johniak/gitarbor/compare/v0.10.2...HEAD
+[Unreleased]: https://github.com/johniak/gitarbor/compare/v0.10.3...HEAD
+[0.10.3]: https://github.com/johniak/gitarbor/releases/tag/v0.10.3
 [0.10.2]: https://github.com/johniak/gitarbor/releases/tag/v0.10.2
 [0.10.1]: https://github.com/johniak/gitarbor/releases/tag/v0.10.1
 [0.10.0]: https://github.com/johniak/gitarbor/releases/tag/v0.10.0
